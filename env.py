@@ -785,9 +785,8 @@ class R2RBatch():
                     'action_embedding': action_embedding,
                     'navigableLocations' : state.navigableLocations,
                     'instructions' : item['instructions'],
-                    'location': state.location
                 }
-                if include_teacher:
+                if include_teacher: 
                     ob['teacher'] = self._shortest_path_action(state, adj_loc_list, item['path'][-1])
                 if 'instr_encoding' in item:
                     ob['instr_encoding'] = item['instr_encoding']
@@ -802,6 +801,7 @@ class R2RBatch():
 
         #end_time = time.time()
         #print("get obs in {} seconds".format(end_time - start_time))
+            #print(obs)
         return obs
 
     def get_starting_world_states(self, instance_list, beamed=False):

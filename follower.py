@@ -653,7 +653,7 @@ class Seq2SeqAgent(BaseAgent):
             
         return traj
     
-    def end_pose(self, encoded_instructions, scanId, viewpointId,heading, elevation):
+    def end_pose(self, encoded_instructions, scanId, viewpointId,heading = 0.0, elevation = 0.0):
         sim = MatterSim.Simulator()         #init mattersim
         sim.setRenderingEnabled(False)
         sim.setDiscretizedViewingAngles(True)

@@ -55,7 +55,7 @@ class EncoderLSTM(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx)
         self.use_glove = glove is not None
         if self.use_glove:
-            #print('Using GloVe embedding')
+            print('Using GloVe embedding')
             self.embedding.weight.data[...] = torch.from_numpy(glove)
             self.embedding.weight.requires_grad = False
         self.lstm = nn.LSTM(embedding_size, hidden_size, self.num_layers,
@@ -315,7 +315,7 @@ class VisualSoftDotAttention(nn.Module):
         '''
         target = self.linear_in_h(h).unsqueeze(2)  # batch x dot_dim x 1
         context = self.linear_in_v(visual_context)  # batch x v_num x dot_dim
-
+        #print(target.size(),context.size())
         # Get attention
         attn = torch.bmm(context, target).squeeze(2)  # batch x v_num
         attn = self.sm(attn)
@@ -388,6 +388,7 @@ class AttnDecoderLSTM(nn.Module):
         '''
         feature, alpha_v = self.visual_attention_layer(h_0, visual_context)
         # (batch, embedding_size+feature_size)
+        #print(u_t_prev.size(), feature.size())
         concat_input = torch.cat((u_t_prev, feature), 1)
         drop = self.drop(concat_input)
         h_1, c_1 = self.lstm(drop, (h_0, c_0))

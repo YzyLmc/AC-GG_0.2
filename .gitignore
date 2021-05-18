@@ -11,6 +11,7 @@
 *.pyc
 *.out
 *.zip
+*.npy
 /tasks/R2R/data/*.json
 /tasks/R2R/data/*_vocab.txt
 /tasks/R2R/plots/
@@ -21,6 +22,7 @@
 .idea/
 *.iml
 
+img_features_36*2048
 img_features
 tasks/R2R/speaker/
 

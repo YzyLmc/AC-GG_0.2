@@ -25,7 +25,7 @@ PLOT_DIR = 'tasks/R2R/speaker/plots/'
 # TODO: how much is this truncating instructions?
 MAX_INSTRUCTION_LENGTH = 80
 
-batch_size = 2
+batch_size = 100
 max_episode_len = 10
 word_embedding_size = 300
 glove_path = 'tasks/R2R/data/train_glove.npy'
@@ -33,12 +33,12 @@ action_embedding_size = 2048+128
 hidden_size = 512
 bidirectional = False
 dropout_ratio = 0.5
-feedback_method = 'sample'  # teacher or sample
+feedback_method = 'teacher'  # teacher or sample
 learning_rate = 0.0001
 weight_decay = 0.0005
 FEATURE_SIZE = 2048+128
 n_iters = 20000
-log_every = 1
+log_every = 100
 save_every = 1000
 
 
@@ -218,9 +218,6 @@ def train_setup(args):
         args, vocab, train_splits, val_splits)
     agent = Seq2SeqSpeaker(
         train_env, "", encoder, decoder, MAX_INSTRUCTION_LENGTH)
-    
-    agent.load('tasks/R2R/snapshots/release/speaker_final_release')
-    print('pretrained model loaded')
     return agent, train_env, val_envs
 
 
