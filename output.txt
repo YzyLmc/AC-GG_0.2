@@ -1,0 +1,15 @@
+ref 0:	turn right and exit the bathroom into the bedroom . once in the bedroom turn right and walk to the door leading out on your right . once out the door turn left and walk to the top of the stairs and stop .
+ref 1:	exit the bathroom toward the room then turn right and go out the door on your right . turn left and stop at the top of the stairs on your left .
+ref 2:	turn to the right until you face the bedroom and a bed . walk toward the bed and turn right toward the bedroom door . turn right and walk into the hall and turn left . walk to the top of the stairs .
+pred  :	exit the bathroom and turn right . walk past the bed and turn left . walk past the bed and turn left . wait near the black chair .
+
+ref 0:	turn around and exit the door to your right . once out , turn left and walk across the kitchen . turn right into the dining room and out the other side . once out turn left and walk to the first door on your right . stop once you enter the bedroom .
+ref 1:	turn to the right and then take your next right . turn left in the kitchen and pass the kitchen table . then turn right and take your next immediate left and stop in the door .
+ref 2:	pass the sink and leave the laundry room . enter the kitchen , and take a left . walk out of the kitchen through the door on the right . take a left , and enter the bedroom through the first door on the right . stop in the doorway .
+pred  :	exit the bathroom and turn right . walk past the kitchen and turn left . walk past the dining room table and turn left . walk into the hallway and wait there .
+
+ref 0:	turn right and go into the entry . go right passed the kitchen table and outside . stop on the deck .
+ref 1:	turn left then turn right . pass the tv and the kitchen / dining room . go out the glass sliding door to the patio and wait near the black table and chairs .
+ref 2:	walk into the room , to the left of the stairs . walk past the dining room set on the left , and straight out the door that leads to outside . once outside , stop before the table .
+pred  :	walk past the couch and into the living room . walk past the dining table and chairs and turn left . walk outside and wait there .
+

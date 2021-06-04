@@ -5,6 +5,7 @@ import sys
 import numpy as np
 import math
 import random
+import argparse
 from collections import namedtuple
 
 import torch
@@ -101,7 +102,7 @@ def batch_instructions_from_encoded(encoded_instructions, max_length, reverse=Fa
     mask = (seq_tensor == vocab_pad_idx)[:, :max(seq_lengths)]
 
     ret_tp = try_cuda(Variable(seq_tensor, requires_grad=False).long()), \
-             try_cuda(mask.byte()), \
+             try_cuda(mask.bool()), \
              seq_lengths
     if sort:
         ret_tp = ret_tp + (list(perm_idx),)
@@ -282,7 +283,14 @@ class Seq2SeqAgent(BaseAgent):
         self.beam_size = beam_size
         self.reverse_instruction = reverse_instruction
         self.max_instruction_length = max_instruction_length
-
+        
+        parser = argparse.ArgumentParser()
+        from env import ImageFeatures
+        ImageFeatures.add_args(parser)
+        
+        args, _ = parser.parse_known_args()
+        
+        self.image_features_list= ImageFeatures.from_args(args)
     # @staticmethod
     # def n_inputs():
     #     return len(FOLLOWER_MODEL_ACTIONS)
@@ -420,7 +428,7 @@ class Seq2SeqAgent(BaseAgent):
 
             # Update ended list
             for i in range(batch_size):
-                action_idx = a_t[i].data[0]
+                action_idx = a_t[i].item()
                 if action_idx == 0:
                     ended[i] = True
 
@@ -504,13 +512,13 @@ class Seq2SeqAgent(BaseAgent):
             # update the previous action
             u_t_prev = all_u_t[np.arange(batch_size), a_t, :].detach()
 
-            action_scores = -F.cross_entropy(logit, a_t, ignore_index=-1, reduce=False).data
+            action_scores = -F.cross_entropy(logit, a_t, ignore_index=-1, reduction = 'none').data
             sequence_scores += action_scores
 
             # dfried: I changed this so that the ended list is updated afterward; this causes <end> to be added as the last action, along with its score, and the final world state will be duplicated (to more closely match beam search)
             # Make environment action
             for i in range(batch_size):
-                action_idx = a_t[i].data[0]
+                action_idx = a_t[i].item()
                 env_action[i] = action_idx
 
             world_states = self.env.step(world_states, env_action, obs)
@@ -528,7 +536,7 @@ class Seq2SeqAgent(BaseAgent):
 
             # Update ended list
             for i in range(batch_size):
-                action_idx = a_t[i].data[0]
+                action_idx = a_t[i].item()
                 if action_idx == 0:
                     ended[i] = True
 
@@ -538,10 +546,14 @@ class Seq2SeqAgent(BaseAgent):
 
         #self.losses.append(self.loss.data[0] / self.episode_len)
         # shouldn't divide by the episode length because of masking
-        self.losses.append(self.loss.data[0])
+        self.losses.append(self.loss.item())
         return traj
     
     def generate(self, encoded_instructions, scanId, viewpointId,heading = 0.0, elevation = 0.0):
+        
+        self.encoder.eval()
+        self.decoder.eval()
+        
         sim = MatterSim.Simulator()         #init mattersim
         sim.setRenderingEnabled(False)
         sim.setDiscretizedViewingAngles(True)
@@ -572,13 +584,14 @@ class Seq2SeqAgent(BaseAgent):
             build_viewpoint_loc_embedding(viewIndex) for viewIndex in range(36)]
         def observe(sim):       #build observe dict
             state, adj_loc_ls = env._get_panorama_states(sim)
-            filePath = 'img_features_36*2048/'+ state.scanId + '/' + state.location.viewpointId + '.pt'
-            feature = torch.load(filePath)
+            #filePath = 'img_features_36*2048/'+ state.scanId + '/' + state.location.viewpointId + '.pt'
+            #feature = torch.load(filePath)
+            feature = [f.get_features(state) for f in self.image_features_list]
             
             #print(feature,_static_loc_embeddings[state.viewIndex])
             #print(feature.size(),_static_loc_embeddings[state.viewIndex].size())
-            feature_with_loc = np.concatenate((feature, _static_loc_embeddings[state.viewIndex]), axis=-1)
-            action_embedding = env._build_action_embedding(adj_loc_ls, feature)
+            feature_with_loc = np.concatenate((feature[0], _static_loc_embeddings[state.viewIndex]), axis=-1)
+            action_embedding = env._build_action_embedding(adj_loc_ls, feature[0])
             ob = {
                 'scan' : state.scanId,
                 'viewpoint' : state.location.viewpointId,
@@ -684,13 +697,14 @@ class Seq2SeqAgent(BaseAgent):
             build_viewpoint_loc_embedding(viewIndex) for viewIndex in range(36)]
         def observe(sim):       #build observe dict
             state, adj_loc_ls = env._get_panorama_states(sim)
-            filePath = 'img_features_36*2048/'+ state.scanId + '/' + state.location.viewpointId + '.pt'
-            feature = torch.load(filePath)
+            #filePath = 'img_features_36*2048/'+ state.scanId + '/' + state.location.viewpointId + '.pt'
+            #feature = torch.load(filePath)
+            feature = [f.get_features(state) for f in self.image_features_list]
             
             #print(feature,_static_loc_embeddings[state.viewIndex])
             #print(feature.size(),_static_loc_embeddings[state.viewIndex].size())
-            feature_with_loc = np.concatenate((feature, _static_loc_embeddings[state.viewIndex]), axis=-1)
-            action_embedding = env._build_action_embedding(adj_loc_ls, feature)
+            feature_with_loc = np.concatenate((feature[0], _static_loc_embeddings[state.viewIndex]), axis=-1)
+            action_embedding = env._build_action_embedding(adj_loc_ls, feature[0])
             ob = {
                 'scan' : state.scanId,
                 'viewpoint' : state.location.viewpointId,
@@ -752,7 +766,7 @@ class Seq2SeqAgent(BaseAgent):
                 break
             
             
-        return sim.getState().location
+        return sim.getState().location.viewpointId
             
             
 

@@ -40,7 +40,7 @@ def backchain_inference_states(last_inference_state):
 class Seq2SeqSpeaker(object):
     feedback_options = ['teacher', 'argmax', 'sample']
 
-    def __init__(self, env, results_path, encoder, decoder, instruction_len, max_episode_len=10):
+    def __init__(self, env, results_path, encoder, decoder, instruction_len, scorer=None, tokenizer=None, max_episode_len=10, follower = None):
         self.env = env
         self.results_path = results_path
         random.seed(1)
@@ -53,6 +53,12 @@ class Seq2SeqSpeaker(object):
 
         self.losses = []
         self.max_episode_len = max_episode_len
+        if scorer:    
+            self.scorer = scorer
+        if tokenizer:            
+            self.tok = tokenizer
+        if follower:
+            self.agent = follower
 
     def write_results(self):
         with open(self.results_path, 'w') as f:
@@ -170,7 +176,7 @@ class Seq2SeqSpeaker(object):
 
             # BOS are not part of the encoded sequences
             target = instr_seq[:,t].contiguous()
-            probs = F.softmax(logit)
+            probs = F.softmax(logit,dim=1)
             # Determine next model inputs
             if feedback == 'teacher':
                 w_t = target
@@ -188,9 +194,9 @@ class Seq2SeqSpeaker(object):
             log_probs = F.log_softmax(logit, dim=1)
             output_soft.append(probs.unsqueeze(0))
             instr_pred.append(w_t.unsqueeze(0))
-            word_scores = -F.nll_loss(log_probs, w_t, ignore_index=vocab_pad_idx, reduce=False)
+            word_scores = -F.nll_loss(log_probs, w_t, ignore_index=vocab_pad_idx, reduction = 'none')
             sequence_scores += word_scores.data
-            loss += F.nll_loss(log_probs, target, ignore_index=vocab_pad_idx, reduce=True, size_average=True)
+            loss += F.nll_loss(log_probs, target, ignore_index=vocab_pad_idx, reduction = 'mean')
 
             for perm_index, src_index in enumerate(perm_indices):
                 word_idx = w_t[perm_index].item()
@@ -228,57 +234,81 @@ class Seq2SeqSpeaker(object):
         bleus = []
         lossRL = 0
         #####################distance as reward##################################
-        #first load pretrained follower
-        MAX_INPUT_LENGTH = 80
-        feature_size = 2048+128
-        max_episode_len = 10
-        word_embedding_size = 300
-        glove_path = 'tasks/R2R/data/train_glove.npy'
-        action_embedding_size = 2048+128
-        hidden_size = 512
-        dropout_ratio = 0.5
-        vocab = read_vocab(TRAIN_VOCAB)
-        tok = Tokenizer(vocab=vocab)
-        glove = np.load(glove_path)
-        
-        encoder = try_cuda(EncoderLSTM(
-                len(vocab), word_embedding_size, hidden_size, vocab_pad_idx,
-                dropout_ratio, glove=glove))
-        decoder = try_cuda(AttnDecoderLSTM(
-            action_embedding_size, hidden_size, dropout_ratio,
-            feature_size=feature_size))
-        
-        agent = Seq2SeqAgent(
-                None, "", encoder, decoder, max_episode_len,
-                max_instruction_length=MAX_INPUT_LENGTH)
-        
-        agent.load('tasks/R2R/snapshots/release/follower_final_release', map_location = torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-        def dist(location1, location2):
-            x1 = location1[0]
-            y1 = location1[1]
-            z1 = location1[2]
-            x2 = location2[0]
-            y2 = location2[1]
-            z2 = location2[2]
-            return np.sqrt(abs(x1-x2)+abs(y1-y2)+abs(z1-z2))
-        def get_end_pose(encoded_instructions, scanId, viewpointId, heading = 0., elevation = 0.):
-            pose = agent.end_pose(encoded_instructions, scanId, viewpointId, heading = heading, elevation = elevation)   
-            return pose.point
-        
-        for batch_idx in range(batch_size):
-            
-            print('{}/{}'.format(batch_idx,batch_size))
-            pred_i = torch.tensor(instr_pred[batch_idx],device = torch.device('cuda'))
-            location_end = path_obs[batch_idx][-1]['location'].point
-            ob_1 = start_obs[batch_idx]
-            scanId = ob_1['scan']
-            viewpoint = ob_1['viewpoint']
-            elevation = ob_1['elevation']
-            heading = ob_1['heading']            
-
-            dist_i = dist(get_end_pose(pred_i,scanId,viewpoint,heading,elevation),location_end)
-            print(dist_i)
-            bleus.append(dist_i)
+# =============================================================================
+#         #first load pretrained follower
+#         MAX_INPUT_LENGTH = 80
+#         feature_size = 2048+128
+#         max_episode_len = 10
+#         word_embedding_size = 300
+#         glove_path = 'tasks/R2R/data/train_glove.npy'
+#         action_embedding_size = 2048+128
+#         hidden_size = 512
+#         dropout_ratio = 0.5
+#         vocab = read_vocab(TRAIN_VOCAB)
+#         tok = Tokenizer(vocab=vocab)
+#         glove = np.load(glove_path)
+#         
+#         encoder = try_cuda(EncoderLSTM(
+#                 len(vocab), word_embedding_size, hidden_size, vocab_pad_idx,
+#                 dropout_ratio, glove=glove))
+#         decoder = try_cuda(AttnDecoderLSTM(
+#             action_embedding_size, hidden_size, dropout_ratio,
+#             feature_size=feature_size))
+#         
+#         agent = Seq2SeqAgent(
+#                 None, "", encoder, decoder, max_episode_len,
+#                 max_instruction_length=MAX_INPUT_LENGTH)
+#         
+#         agent.load('tasks/R2R/snapshots/release/follower_final_release', map_location = torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+# =============================================================================
+        #follower will be loaded in advance
+# =============================================================================
+#         def dist(location1, location2):
+#             x1 = location1[0]
+#             y1 = location1[1]
+#             z1 = location1[2]
+#             x2 = location2[0]
+#             y2 = location2[1]
+#             z2 = location2[2]
+#             return np.sqrt(abs(x1-x2)+abs(y1-y2)+abs(z1-z2))
+#         def get_end_pose(encoded_instructions, scanId, viewpointId, heading = 0., elevation = 0.):
+#             pose = agent.end_pose(encoded_instructions, scanId, viewpointId, heading = heading, elevation = elevation)   
+#             return pose.point
+# =============================================================================
+# =============================================================================
+#         
+#         for batch_idx in range(batch_size):
+#             
+#             #print('{}/{}'.format(batch_idx,batch_size))
+#             pred_i = torch.tensor(instr_pred[batch_idx],device = torch.device('cuda'))
+#             location_end = path_obs[batch_idx][-1]['viewpoint']
+#             #location_start = path_obs[batch_idx][0]['viewpoint']
+#             ob_1 = start_obs[batch_idx]
+#             scanId = ob_1['scan']
+#             viewpoint = ob_1['viewpoint']
+#             elevation = ob_1['elevation']
+#             heading = ob_1['heading']            
+# 
+#             #dist_i = dist(get_end_pose(pred_i,scanId,viewpoint,heading,elevation),location_end)
+#             #dist_all = dist(location_start,location_end)
+#             #print(dist_i)
+#             end_pose_pred = self.agent.end_pose(pred_i, scanId, viewpoint,heading,elevation)
+#             dist_i = self.env.distances[scanId][end_pose_pred][location_end]
+#             bonus = 3 if dist_i < 3 else 0
+#             bleus.append(dist_i)
+#             
+#             for i in range(len(pred_i)):
+#                 if i == 0:
+#                     G = - (dist_i - self.env.distances[scanId][viewpoint][location_end]) + bonus
+#                 else:    
+#                     end_pose_j = self.agent.end_pose(pred_i[:i], scanId, viewpoint,heading,elevation)
+#                     G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end]) + bonus
+#                     
+#                         
+#                 lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
+#             
+#             
+# =============================================================================
 # =============================================================================
 #             for i in range(len(pred_i)):
 #         
@@ -291,9 +321,9 @@ class Seq2SeqSpeaker(object):
 #                         
 #                 lossRL += - G * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
 # =============================================================================
-        #####################################################################################        
-        ##########################bleu reward###############################################        
 # =============================================================================
+#         #####################################################################################        
+#         ##########################bleu reward###############################################        
 #                 #if pred_i[i] == vocab_eos_idx:
 #                 #    bleus.append(BLEU([seq_i],pred_i))
 #                 #    break
@@ -316,17 +346,67 @@ class Seq2SeqSpeaker(object):
 #                         
 #                 lossRL += - G * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
 # =============================================================================
+# =============================================================================
+#         #######################################################################################################
+#         ###########################Bertscore reward############################################################
+#         #vocab = read_vocab(TRAIN_VOCAB)
+#         #tok = Tokenizer(vocab=vocab)
+# 
+#     
+#         def get_instr_list(ls):
+#             ls_ls=[]
+#             for i in range(len(ls)):
+#                 ls_ls.append([self.tok.decode_sentence(ls[:i+1],break_on_eos=True,join=True)])
+#                 
+#             return ls_ls
+#         
+#         def get_bscore(ls,ref):
+#             ls_ls = get_instr_list(ls)
+#             bscore_ls = []
+#             for cand in ls_ls:
+#                 _, _, F1 = self.scorer.score(cand,[ref])
+#                 bscore_ls.append(F1)
+#             return bscore_ls
+#                 
+#         lamda = 0.95
+#         for batch_idx in range(batch_size):
+#             #print(batch_idx)
+#             pred_i = instr_pred[batch_idx]
+#             #pred_i = [tok.decode_sentence(pred_i,break_on_eos=True,join=True)]
+#             
+#             seq_i = instr_seq[batch_idx]
+#             seq_i = [self.tok.decode_sentence(seq_i,break_on_eos=True,join=True)]
+#             bscore_ls = get_bscore(pred_i,seq_i)
+# 
+#             bleus.append(bscore_ls[-1])
+#             
+#             
+#             for i in range(len(pred_i)):  
+#                 G = 0
+#                 for j in range(len(pred_i)-i-1,len(pred_i)):
+#                     if j > 0:
+#                         t = j - (len(pred_i)-i-1)
+#                         G += (bscore_ls[j]-bscore_ls[j-1])*np.power(lamda,t)
+#                     else:
+#                         G += bscore_ls[j]
+#                 lossRL += - G.cuda() * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
+#                 
+#                 
+# =============================================================================
         #######################################################################################################
-        
-        npy = np.load('BLEU_training.npy')
-        npy = np.append(npy,sum(bleus)/len(bleus))
-        np.save('BLEU_training.npy',npy)
-        with open('BLEU_training.npy', 'wb') as f:
-
-            np.save(f, npy)
-        #print(lossRL, loss)
-        #loss = 0.5 * lossRL + 0.5 * loss   
-        #loss = lossRL
+# =============================================================================
+#         npy = np.load('VLN_training_batch.npy')
+#         bleu_avg = sum(bleus)/len(bleus)
+#         print(bleu_avg,pred_i)
+#         npy = np.append(npy,bleu_avg)
+#         #np.save('BLEU_training.npy',npy)
+#         with open('VLN_training_batch.npy', 'wb') as f:
+# 
+#             np.save(f, npy)
+#         #print(lossRL, loss)
+#         #loss = 0.5 * lossRL + 0.5 * loss   
+#         loss = lossRL
+# =============================================================================
         for item in outputs:
             item['words'] = self.env.tokenizer.decode_sentence(item['word_indices'], break_on_eos=True, join=False)
 
@@ -355,7 +435,7 @@ class Seq2SeqSpeaker(object):
             
             #_,w_t = logit.max(1)        # student forcing - argmax
             #w_t = w_t.detach()
-            probs = F.softmax(logit)    # sampling an action from model
+            probs = F.softmax(logit, dim = 1)    # sampling an action from model
             m = D.Categorical(probs)
             w_t = m.sample()
             
@@ -365,7 +445,7 @@ class Seq2SeqSpeaker(object):
             if ended.all():
                 break
             
-        decoded_words = self.env.tokenizer.decode_sentence(word_indices, break_on_eos=True, join=False)
+        decoded_words = self.tokenizer.decode_sentence(word_indices, break_on_eos=True, join=False)
         
         return decoded_words
     

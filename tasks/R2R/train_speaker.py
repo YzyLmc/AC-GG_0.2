@@ -10,13 +10,24 @@ from collections import defaultdict
 import argparse
 
 import utils
-from utils import read_vocab, Tokenizer, timeSince, try_cuda
+from utils import read_vocab, Tokenizer, timeSince, try_cuda, vocab_pad_idx
 from env import R2RBatch, ImageFeatures
 from model import SpeakerEncoderLSTM, SpeakerDecoderLSTM
 from speaker import Seq2SeqSpeaker
 import eval_speaker
 
 from vocab import SUBTRAIN_VOCAB, TRAIN_VOCAB, TRAINVAL_VOCAB
+
+import logging
+import transformers
+transformers.tokenization_utils.logger.setLevel(logging.ERROR)
+transformers.configuration_utils.logger.setLevel(logging.ERROR)
+transformers.modeling_utils.logger.setLevel(logging.ERROR)
+from bert_score import BERTScorer
+from follower import Seq2SeqAgent
+from model import EncoderLSTM, AttnDecoderLSTM
+
+#scorer = BERTScorer(lang='en', rescale_with_baseline = True)
 
 RESULT_DIR = 'tasks/R2R/speaker/results/'
 SNAPSHOT_DIR = 'tasks/R2R/speaker/snapshots/'
@@ -25,7 +36,7 @@ PLOT_DIR = 'tasks/R2R/speaker/plots/'
 # TODO: how much is this truncating instructions?
 MAX_INSTRUCTION_LENGTH = 80
 
-batch_size = 2
+batch_size = 10
 max_episode_len = 10
 word_embedding_size = 300
 glove_path = 'tasks/R2R/data/train_glove.npy'
@@ -34,14 +45,38 @@ hidden_size = 512
 bidirectional = False
 dropout_ratio = 0.5
 feedback_method = 'sample'  # teacher or sample
-learning_rate = 0.0001
+learning_rate = 0.0001 #original laening rate
+#learning_rate = 0.005 #Bertscore LR
 weight_decay = 0.0005
 FEATURE_SIZE = 2048+128
-n_iters = 20000
-log_every = 1
-save_every = 1000
+n_iters = 2000
+log_every = 100
+save_every = 100
 
+vocab = read_vocab(TRAIN_VOCAB)
+tok = Tokenizer(vocab=vocab)
+##############################init follower
+MAX_INPUT_LENGTH = 80
+feature_size = 2048+128
+max_episode_len = 10
+word_embedding_size = 300
 
+glove = np.load(glove_path)
+
+encoder = try_cuda(EncoderLSTM(
+        len(vocab), word_embedding_size, hidden_size, vocab_pad_idx,
+        dropout_ratio, glove=glove))
+decoder = try_cuda(AttnDecoderLSTM(
+    action_embedding_size, hidden_size, dropout_ratio,
+    feature_size=feature_size))
+
+follower = Seq2SeqAgent(
+        None, "", encoder, decoder, max_episode_len,
+        max_instruction_length=MAX_INPUT_LENGTH)
+            
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+follower.load('tasks/R2R/snapshots/release/follower_final_release', map_location = device)
+####################################
 def get_model_prefix(args, image_feature_list):
     image_feature_name = "+".join(
         [featurizer.get_name() for featurizer in image_feature_list])
@@ -107,65 +142,74 @@ def train(args, train_env, agent, log_every=log_every, val_envs=None):
 
         save_log = []
         # Run validation
-        for env_name, (val_env, evaluator) in sorted(val_envs.items()):
-            agent.env = val_env
-            # Get validation loss under the same conditions as training
-            agent.test(use_dropout=True, feedback=feedback_method,
-                       allow_cheat=True)
-            val_losses = np.array(agent.losses)
-            val_loss_avg = np.average(val_losses)
-            data_log['%s loss' % env_name].append(val_loss_avg)
-
-            agent.results_path = '%s%s_%s_iter_%d.json' % (
-                args.result_dir, get_model_prefix(
-                    args, train_env.image_features_list),
-                env_name, iter)
-
-            # Get validation distance from goal under evaluation conditions
-            results = agent.test(use_dropout=False, feedback='argmax')
-            if not args.no_save:
-                agent.write_results()
-            print("evaluating on {}".format(env_name))
-            score_summary, _ = evaluator.score_results(results, verbose=True)
-
-            loss_str += ', %s loss: %.4f' % (env_name, val_loss_avg)
-            for metric, val in score_summary.items():
-                data_log['%s %s' % (env_name, metric)].append(val)
-                if metric in ['bleu']:
-                    loss_str += ', %s: %.3f' % (metric, val)
-
-                    key = (env_name, metric)
-                    if key not in best_metrics or best_metrics[key] < val:
-                        best_metrics[key] = val
-                        if not args.no_save:
-                            model_path = make_path(iter) + "_%s-%s=%.3f" % (
-                                env_name, metric, val)
-                            save_log.append(
-                                "new best, saved model to %s" % model_path)
-                            agent.save(model_path)
-                            if key in last_model_saved:
-                                for old_model_path in \
-                                        agent._encoder_and_decoder_paths(
-                                            last_model_saved[key]):
-                                    os.remove(old_model_path)
-                            last_model_saved[key] = model_path
-
+# =============================================================================
+#         for env_name, (val_env, evaluator) in sorted(val_envs.items()):
+#             agent.env = val_env
+#             # Get validation loss under the same conditions as training
+#             agent.test(use_dropout=True, feedback=feedback_method,
+#                        allow_cheat=True)
+#             val_losses = np.array(agent.losses)
+#             val_loss_avg = np.average(val_losses)
+#             data_log['%s loss' % env_name].append(val_loss_avg)
+# 
+#             agent.results_path = '%s%s_%s_iter_%d.json' % (
+#                 args.result_dir, get_model_prefix(
+#                     args, train_env.image_features_list),
+#                 env_name, iter)
+# 
+#             # Get validation distance from goal under evaluation conditions
+#             results = agent.test(use_dropout=False, feedback='argmax')
+#             if not args.no_save:
+#                 agent.write_results()
+#             print("evaluating on {}".format(env_name))
+#             score_summary, _ = evaluator.score_results(results, verbose=True)
+# 
+#             loss_str += ', %s loss: %.4f' % (env_name, val_loss_avg)
+#             for metric, val in score_summary.items():
+#                 data_log['%s %s' % (env_name, metric)].append(val)
+#                 if metric in ['bleu']:
+#                     loss_str += ', %s: %.3f' % (metric, val)
+# 
+#                     key = (env_name, metric)
+#                     if key not in best_metrics or best_metrics[key] < val:
+#                         best_metrics[key] = val
+#                         if not args.no_save:
+#                             model_path = make_path(iter) + "_%s-%s=%.3f" % (
+#                                 env_name, metric, val)
+#                             save_log.append(
+#                                 "new best, saved model to %s" % model_path)
+#                             agent.save(model_path)
+#                             if key in last_model_saved:
+#                                 for old_model_path in \
+#                                         agent._encoder_and_decoder_paths(
+#                                             last_model_saved[key]):
+#                                     os.remove(old_model_path)
+#                             last_model_saved[key] = model_path
+# 
+# =============================================================================
+# =============================================================================
+#         print(('%s (%d %d%%) %s' % (
+#             timeSince(start, float(iter)/args.n_iters),
+#             iter, float(iter)/args.n_iters*100, loss_str)))
+#         for s in save_log:
+#             print(s)
+# 
+# =============================================================================
         print(('%s (%d %d%%) %s' % (
-            timeSince(start, float(iter)/args.n_iters),
-            iter, float(iter)/args.n_iters*100, loss_str)))
-        for s in save_log:
-            print(s)
-
+             timeSince(start, float(iter)/args.n_iters),
+             iter, float(iter)/args.n_iters*100, loss_str)))
         if not args.no_save:
             if save_every and iter % save_every == 0:
                 agent.save(make_path(iter))
 
-            df = pd.DataFrame(data_log)
-            df.set_index('iteration')
-            df_path = '%s%s_log.csv' % (
-                args.plot_dir, get_model_prefix(
-                    args, train_env.image_features_list))
-            df.to_csv(df_path)
+# =============================================================================
+#             df = pd.DataFrame(data_log)
+#             df.set_index('iteration')
+#             df_path = '%s%s_log.csv' % (
+#                 args.plot_dir, get_model_prefix(
+#                     args, train_env.image_features_list))
+#             df.to_csv(df_path)
+# =============================================================================
 
 
 def setup():
@@ -217,7 +261,7 @@ def train_setup(args):
     train_env, val_envs, encoder, decoder = make_env_and_models(
         args, vocab, train_splits, val_splits)
     agent = Seq2SeqSpeaker(
-        train_env, "", encoder, decoder, MAX_INSTRUCTION_LENGTH)
+        train_env, "", encoder, decoder,  MAX_INSTRUCTION_LENGTH, follower = follower)
     
     agent.load('tasks/R2R/snapshots/release/speaker_final_release')
     print('pretrained model loaded')
@@ -264,7 +308,7 @@ def make_arg_parser():
     parser.add_argument(
         "--use_train_subset", action='store_true',
         help="use a subset of the original train data for validation")
-    parser.add_argument("--n_iters", type=int, default=20000)
+    parser.add_argument("--n_iters", type=int, default=2000)
     parser.add_argument("--no_save", action='store_true')
     parser.add_argument("--result_dir", default=RESULT_DIR)
     parser.add_argument("--snapshot_dir", default=SNAPSHOT_DIR)

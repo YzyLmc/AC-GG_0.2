@@ -107,7 +107,7 @@ class Evaluation(object):
                 self.scores['oracle_success'].append(
                     eval_result.oracle_success)
                 if 'score' in result:
-                    model_scores.append(result['score'])
+                    model_scores.append(result['score'].cpu().numpy())
 
         assert len(instr_ids) == 0, \
             'Missing %d of %d instruction ids from %s' % (
