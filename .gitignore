@@ -16,9 +16,9 @@
 /tasks/R2R/data/*_vocab.txt
 /tasks/R2R/plots/
 /tasks/R2R/results/
-tasks/R2R/snapshots/
-tasks/R2R/speaker/
-r2r_src
+/tasks/R2R/snapshots/
+/tasks/R2R/speaker/
+/r2r_src
 
 # intellij
 .idea/
