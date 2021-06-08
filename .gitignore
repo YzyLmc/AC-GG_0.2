@@ -19,6 +19,7 @@
 /tasks/R2R/snapshots/
 /tasks/R2R/speaker/
 /snap
+/r2r_src/snap
 
 # intellij
 .idea/
