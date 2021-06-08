@@ -119,7 +119,7 @@ class Param:
         self.parser.add_argument("--eosub", action="store_const", default=False, const=True)
         self.parser.add_argument("--load", type=str, default=None)
 
-        self.parser.add_argument("--angleFeatSize", dest="angle_feat_size", type=int, default=4)
+        self.parser.add_argument("--angleFeatSize", dest="angle_feat_size", type=int, default=128) #changed from4 to 128
 
         # A2C
         self.parser.add_argument("--gamma", default=0.9, type=float)

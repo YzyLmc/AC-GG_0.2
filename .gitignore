@@ -18,7 +18,7 @@
 /tasks/R2R/results/
 /tasks/R2R/snapshots/
 /tasks/R2R/speaker/
-/r2r_src
+/snapshot
 
 # intellij
 .idea/
@@ -26,4 +26,5 @@
 
 img_features_36*2048
 img_features
+snapshot
 

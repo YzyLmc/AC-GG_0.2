@@ -157,7 +157,7 @@ class SoftDotAttention(nn.Module):
 
         if mask is not None:
             # -Inf masking prior to the softmax
-            attn.masked_fill_(mask, -float('inf'))
+            attn.masked_fill_(mask.bool(), -float('inf'))
         attn = self.sm(attn)    # There will be a bug here, but it's actually a problem in torch source code.
         #attn = F.softmax(attn, -1)
         attn3 = attn.view(attn.size(0), 1, attn.size(1))  # batch x 1 x seq_len

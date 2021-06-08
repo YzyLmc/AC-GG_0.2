@@ -15,14 +15,15 @@ from torch import optim
 import torch.nn.functional as F
 
 from env import R2RBatch
-from utils import padding_idx, add_idx, Tokenizer
+from utils import padding_idx, add_idx, Tokenizer, read_img_features
 import utils
 import model
+import env
 import param
 from param import args
 from collections import defaultdict
 
-from allennlp.commands.elmo import ElmoEmbedder
+#from allennlp.commands.elmo import ElmoEmbedder
 
 class BaseAgent(object):
     ''' Base class for an R2R agent to generate and save trajectories. '''
@@ -93,12 +94,14 @@ class Seq2SeqAgent(BaseAgent):
       '<ignore>': (0, 0, 0)  # <ignore>
     }
 
-    def __init__(self, env, results_path, tok, episode_len=20):
+    def __init__(self, env, results_path, tok, feat=None, candidates=None, episode_len=20):
         super(Seq2SeqAgent, self).__init__(env, results_path)
         self.tok = tok
         self.episode_len = episode_len
-        self.feature_size = self.env.feature_size
-
+        if env:
+            self.feature_size = self.env.feature_size
+        else:
+            self.feature_size = 2048
         # Models
         enc_hidden_size = args.rnn_dim//2 if args.bidir else args.rnn_dim
         self.encoder = model.EncoderLSTM(tok.vocab_size(), args.wemb, enc_hidden_size, padding_idx,
@@ -122,13 +125,22 @@ class Seq2SeqAgent(BaseAgent):
         self.criterion = nn.CrossEntropyLoss(ignore_index=args.ignoreid, size_average=False)
 
         # Loss for the denoise
-        self.criterion_denoise = nn.CrossEntropyLoss(ignore_index=args.ignoreid, reduce=False)
-        self.gate_bce_loss = torch.nn.BCEWithLogitsLoss(size_average=False, reduce=False)
+        self.criterion_denoise = nn.CrossEntropyLoss(ignore_index=args.ignoreid, reduction='none')
+        self.gate_bce_loss = torch.nn.BCEWithLogitsLoss(reduction='none')
 
         # Logs
         sys.stdout.flush()
         self.timer = utils.Timer()
         self.logs = defaultdict(list)
+        
+        # for ground function
+        self.buffered_state_dict = {}
+        self.sim = utils.new_simulator()
+        self.angle_feature = utils.get_all_point_angle_feature()
+        if feat:
+            self.features = feat
+        if candidates:    
+            self.candidates = candidates
 
 
     def _sort_batch(self, obs):
@@ -310,7 +322,7 @@ class Seq2SeqAgent(BaseAgent):
             if args.dropspeaker:        # if need drop_speaker
                 insts = speaker.infer_batch(train=True)
             else:
-                insts = speaker.infer_batch(featdropmask=nois)
+                insts = speaker.infer_batch(featdropmask=noise)
             boss = np.ones((batch_size, 1), np.int64) * self.tok.word_to_index['<BOS>']  # First word is <BOS>
             insts = np.concatenate((boss, insts), 1)
             for i, (datum, inst) in enumerate(zip(batch, insts)):
@@ -623,9 +635,246 @@ class Seq2SeqAgent(BaseAgent):
 
         return traj
     
-    def generate(self):
-        
+    def make_candidate(self, feature, candidate, scanId, viewpointId, viewId):
+        def _loc_distance(loc):
+            return np.sqrt(loc.rel_heading ** 2 + loc.rel_elevation ** 2)
+        base_heading = (viewId % 12) * math.radians(30)
+        adj_dict = {}
+        id2feat = {c['viewpointId']: c['feature'] for c in candidate}
+        long_id = "%s_%s" % (scanId, viewpointId)
+        if long_id not in self.buffered_state_dict:
+            for ix in range(36):
+                if ix == 0:
+                    self.sim.newEpisode(scanId, viewpointId, 0, math.radians(-30))
+                elif ix % 12 == 0:
+                    self.sim.makeAction(0, 1.0, 1.0)
+                else:
+                    self.sim.makeAction(0, 1.0, 0)
 
+                state = self.sim.getState()
+                assert state.viewIndex == ix
+
+                # Heading and elevation for the viewpoint center
+                heading = state.heading - base_heading
+                elevation = state.elevation
+
+                visual_feat = feature[ix]
+
+                # get adjacent locations
+                for j, loc in enumerate(state.navigableLocations[1:]):
+                    # if a loc is visible from multiple view, use the closest
+                    # view (in angular distance) as its representation
+                    distance = _loc_distance(loc)
+
+                    # Heading and elevation for for the loc
+                    loc_heading = heading + loc.rel_heading
+                    loc_elevation = elevation + loc.rel_elevation
+                    angle_feat = utils.angle_feature(loc_heading, loc_elevation)
+                    if (loc.viewpointId not in adj_dict or
+                            distance < adj_dict[loc.viewpointId]['distance']):
+                        #if True:
+                            #visual_feat = id2feat[loc.viewpointId]
+                        adj_dict[loc.viewpointId] = {
+                            'heading': loc_heading,
+                            'elevation': loc_elevation,
+                            "normalized_heading": state.heading + loc.rel_heading,
+                            'scanId':scanId,
+                            'viewpointId': loc.viewpointId, # Next viewpoint id
+                            'pointId': ix,
+                            'distance': distance,
+                            'idx': j + 1,
+                            'feature': np.concatenate((visual_feat, angle_feat), -1)
+                        }
+            candidate = list(adj_dict.values())
+            self.buffered_state_dict[long_id] = [
+                {key: c[key]
+                 for key in
+                ['normalized_heading', 'elevation', 'scanId', 'viewpointId',
+                 'pointId', 'idx']}
+            for c in candidate]
+            return candidate
+        else:
+            candidate = self.buffered_state_dict[long_id]
+            candidate_new = []
+            for c in candidate:
+                c_new = c.copy()
+                ix = c_new['pointId']
+                normalized_heading = c_new['normalized_heading']
+                visual_feat = feature[ix]
+                loc_heading = normalized_heading - base_heading
+                c_new['heading'] = loc_heading
+                angle_feat = utils.angle_feature(c_new['heading'], c_new['elevation'])
+                c_new['feature'] = np.concatenate((visual_feat, angle_feat), -1)
+                c_new.pop('normalized_heading')
+                candidate_new.append(c_new)
+            return candidate_new
+        
+    def make_action(self,sim, a_t, obs, traj=None):
+        def take_action(name):
+            if type(name) is int:       # Go to the next view
+                sim.makeAction(name, 0, 0)
+            else:                       # Adjust
+                sim.makeAction(*self.env_actions[name])
+            state = sim.getState()
+            if traj is not None:
+                traj[0]['path'].append((state.location.viewpointId, state.heading, state.elevation))
+                if type(name) is int:
+                    traj[0]['traj'].append(state.location.viewpointId)
+
+        action = a_t[0]
+        if action != -1:            # -1 is the <stop> action
+            select_candidate = obs[0]['candidate'][action]
+            src_point = obs[0]['viewIndex']
+            trg_point = select_candidate['pointId']
+            src_level = (src_point ) // 12   # The point idx started from 0
+            trg_level = (trg_point ) // 12
+            while src_level < trg_level:    # Tune up
+                take_action('up')
+                src_level += 1
+            while src_level > trg_level:    # Tune down
+                take_action('down')
+                src_level -= 1
+            while sim.getState().viewIndex != trg_point:    # Turn right until the target
+                # print("right")
+                # print(self.env.env.sims[idx].getState().viewIndex, trg_point)
+                take_action('right')
+            
+            take_action(select_candidate['idx'])
+    
+    def observe(self, sim):
+        obs = []
+        #for i, (feature, candidate, state) in enumerate(self.env.getStates()):
+        # print("Get obs %d"%i)
+        # sys.stdout.flush()
+        state = sim.getState()
+        base_view_id = state.viewIndex
+        long_id = state.scanId + '_' + state.location.viewpointId
+        if self.features:
+            feature = self.features[long_id]     # Get feature for
+            candidate = self.candidates[long_id]
+        # Full features
+        candidate = self.make_candidate(feature, candidate, state.scanId, state.location.viewpointId, state.viewIndex)
+
+        # By using this, only the heading is shifted, the angle_feature is added.
+        # candidate = self.make_simple_candidate(candidate, base_view_id)
+
+        # (visual_feature, angel_feature) for views
+        feature = np.concatenate((feature, self.angle_feature[base_view_id]), -1)
+        obs.append({
+            
+            'scan' : state.scanId,
+            'viewpoint' : state.location.viewpointId,
+            'viewIndex' : state.viewIndex,
+            'heading' : state.heading,
+            'elevation' : state.elevation,
+            'feature' : feature,
+            'candidate': candidate,
+            'navigableLocations' : state.navigableLocations           
+            
+            
+        })
+        #if 'instr_encoding' in item:
+        #    obs[-1]['instr_encoding'] = item['instr_encoding']
+        # A2C reward. The negative distance between the state and the final state
+        #obs[-1]['distance'] = self.distances[state.scanId][state.location.viewpointId][item['path'][-1]]
+        return obs
+    
+    def ground(self, sim, encoded_instructions, scanId, viewpointId,heading = 0.0, elevation = 0.0):
+                        
+        sim.newEpisode(scanId, viewpointId,heading, elevation)        
+        
+        initial_obs = self.observe(sim)
+        batch_size = len(initial_obs)
+        
+        self.encoder.eval()
+        self.decoder.eval()
+        
+        seq = encoded_instructions.unsqueeze(0)
+        seq_lengths = [len(encoded_instructions)]
+        
+        ctx,h_t,c_t = self.encoder(seq, seq_lengths)    #encode instr
+        
+        ctx_mask = None
+        
+                # Record starting point
+        traj = [{
+            'traj': [ob['viewpoint']],
+            'path': [(ob['viewpoint'], ob['heading'], ob['elevation'])]
+        } for ob in initial_obs]
+
+        
+        # Init the logs
+        rewards = []
+        hidden_states = []
+        policy_log_probs = []
+        masks = []
+        entropys = []
+        ml_loss = 0.
+        ml_losses = []
+        # Initialization the tracking state
+        ended = np.array([False] * batch_size) # Indices match permuation of the model, not env
+        
+        # Initialize the attention in the loop.
+        length = ctx.size(1)
+        alpha = torch.cat([torch.ones(batch_size, 1), torch.zeros(batch_size, length - 1)], 1)
+        alpha = Variable(alpha, requires_grad=False).cuda()
+        
+        prev_feat = Variable(torch.zeros(batch_size, args.views, self.feature_size+args.angle_feat_size), requires_grad=False).cuda()
+        h1 = h_t
+        
+        obs = initial_obs
+        for t in range(self.episode_len):
+            input_a_t, f_t, candidate_feat, candidate_leng = self.get_input_feat(obs)
+            
+            h_t, c_t, alpha, logit, h1 = self.decoder(input_a_t, f_t, candidate_feat, candidate_leng,
+                                                      prev_feat, h_t, h1, c_t, alpha, ctx, ctx_mask
+                                                      #noise is not None or make_noise is None
+                                                      )
+
+            prev_feat = f_t
+            hidden_states.append(h_t)
+
+            # Mask outputs where agent can't move forward
+            # Here the logit is [b, max_candidate]
+            candidate_mask = utils.length2mask(candidate_leng)
+
+            logit.masked_fill_(candidate_mask, -float('inf'))
+
+
+            _, a_t = logit.max(1)        # student forcing - argmax
+            a_t = a_t.detach()
+            log_probs = F.log_softmax(logit, 1)                              # Calculate the log_prob here
+            policy_log_probs.append(log_probs.gather(1, a_t.unsqueeze(1)))   # Gather the log_prob for each batch
+
+
+            # Prepare environment action
+            # NOTE: Env action is in the perm_obs space
+
+            cpu_a_t = a_t.cpu().numpy()
+            for i, next_id in enumerate(cpu_a_t):
+                if next_id == (candidate_leng[i]-1) or next_id == args.ignoreid:    # The last action is <end>
+                    cpu_a_t[i] = -1             # Change the <end> and ignore action to -1
+
+            # Make action and get the new state
+            self.make_action(sim, cpu_a_t, obs, traj= traj)
+            obs = self.observe(sim)                         
+
+            
+
+            # Update the finished actions
+            # -1 means ended or ignored (already ended)
+            ended[:] = np.logical_or(ended, (cpu_a_t == -1))
+
+            # Early exit if all ended
+            if ended.all(): 
+                break
+            
+
+
+        return traj
+
+            
+            
     def _beam_search(self):
         """
         :return:
