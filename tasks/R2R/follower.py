@@ -446,6 +446,8 @@ class Seq2SeqAgent(BaseAgent):
 
         # get mask and lengths
         seq, seq_mask, seq_lengths = self._proc_batch(initial_obs)
+        print(seq_mask)
+        print(seq, seq_lengths)
 
         # Forward through encoder, giving initial hidden state and memory cell for decoder
         # TODO consider not feeding this into the decoder, and just using attention
@@ -547,18 +549,20 @@ class Seq2SeqAgent(BaseAgent):
         #self.losses.append(self.loss.data[0] / self.episode_len)
         # shouldn't divide by the episode length because of masking
         self.losses.append(self.loss.item())
+        #print(traj[0]['trajectory'])
         return traj
     
-    def generate(self, encoded_instructions, scanId, viewpointId,heading = 0.0, elevation = 0.0):
+    def generate(self, sim, encoded_instructions, scanId, viewpointId,heading = 0.0, elevation = 0.0,instr_id = None):
         
         self.encoder.eval()
         self.decoder.eval()
         
-        sim = MatterSim.Simulator()         #init mattersim
-        sim.setRenderingEnabled(False)
-        sim.setDiscretizedViewingAngles(True)
-        sim.setCameraResolution(640, 480)
-        sim.setCameraVFOV(math.radians(60))
+        #sim = MatterSim.Simulator()         #init mattersim
+        #sim.setRenderingEnabled(False)
+        #sim.setDiscretizedViewingAngles(True)
+        #sim.setCameraResolution(640, 480)
+        #sim.setCameraVFOV(math.radians(60))
+        #sim.init()
         sim.newEpisode(scanId, viewpointId,heading, elevation)
         angle_inc = np.pi / 6.
         def build_viewpoint_loc_embedding(viewIndex):
@@ -614,18 +618,22 @@ class Seq2SeqAgent(BaseAgent):
         
         seq = encoded_instructions.unsqueeze(0)
         seq_lengths = [len(encoded_instructions)]
-        
+        seq_mask = (encoded_instructions==0).unsqueeze(0)
+        #print(seq_mask)
         #print(seq, seq_lengths)
         ctx,h_t,c_t = self.encoder(seq, seq_lengths)    #encode instr
 
         # Record starting point
-        traj = [{
+        traj = {
             
-            'trajectory': [path_element_from_observation(ob)],
+            'trajectory': [path_element_from_observation(initial_obs[0])],
             'actions': [],
             
+            
             #'observations': [ob]
-        } for ob in initial_obs]
+        }
+        if instr_id:
+            traj['instr_id'] = instr_id
         
         obs = initial_obs
         for t in range(self.episode_len):
@@ -634,7 +642,7 @@ class Seq2SeqAgent(BaseAgent):
 
             assert len(f_t_list) == 1, 'for now, only work with MeanPooled feature'
             h_t, c_t, alpha, logit, alpha_v = self.decoder(
-                u_t_prev, all_u_t, f_t_list[0], h_t, c_t, ctx)
+                u_t_prev, all_u_t, f_t_list[0], h_t, c_t, ctx, seq_mask)
 
             # Mask outputs of invalid actions
             logit[is_valid == 0] = -float('inf')
@@ -656,14 +664,14 @@ class Seq2SeqAgent(BaseAgent):
             ob = observe(sim)
             obs = [ob]
             
-            traj[0]['trajectory'].append(path_element_from_observation(ob))
-            traj[0]['actions'].append(a_t[0].item())
-            #traj[0]['observations'].append(ob)
+            traj['trajectory'].append(path_element_from_observation(ob))
+            #traj['actions'].append(a_t[0].item())
+            #traj['observations'].append(ob)
             
             if action_idx == 0:
                 break
             
-            
+        #print(traj)    
         return traj
     
     def end_pose(self, encoded_instructions, scanId, viewpointId,heading, elevation):
@@ -764,8 +772,7 @@ class Seq2SeqAgent(BaseAgent):
             
             if action_idx == 0:
                 break
-            
-            
+               
         return sim.getState().location.viewpointId
             
             

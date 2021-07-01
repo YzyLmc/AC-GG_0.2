@@ -133,7 +133,7 @@ class Seq2SeqAgent(BaseAgent):
         self.timer = utils.Timer()
         self.logs = defaultdict(list)
         
-        # for ground function
+        # for ground function-Ziyi
         self.buffered_state_dict = {}
         self.sim = utils.new_simulator()
         self.angle_feature = utils.get_all_point_angle_feature()

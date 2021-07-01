@@ -3,7 +3,9 @@ import sys
 import numpy as np
 import random
 from collections import namedtuple
-
+sys.path.append('build')
+import MatterSim
+import math
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -53,6 +55,13 @@ class Seq2SeqSpeaker(object):
 
         self.losses = []
         self.max_episode_len = max_episode_len
+        
+        self.sim = MatterSim.Simulator()
+        self.sim.setRenderingEnabled(False)
+        self.sim.setDiscretizedViewingAngles(True)
+        self.sim.setCameraResolution(640, 480)
+        self.sim.setCameraVFOV(math.radians(60))
+        self.sim.init()
         if scorer:    
             self.scorer = scorer
         if tokenizer:            
@@ -262,65 +271,43 @@ class Seq2SeqSpeaker(object):
 #         agent.load('tasks/R2R/snapshots/release/follower_final_release', map_location = torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 # =============================================================================
         #follower will be loaded in advance
-# =============================================================================
-#         def dist(location1, location2):
-#             x1 = location1[0]
-#             y1 = location1[1]
-#             z1 = location1[2]
-#             x2 = location2[0]
-#             y2 = location2[1]
-#             z2 = location2[2]
-#             return np.sqrt(abs(x1-x2)+abs(y1-y2)+abs(z1-z2))
-#         def get_end_pose(encoded_instructions, scanId, viewpointId, heading = 0., elevation = 0.):
-#             pose = agent.end_pose(encoded_instructions, scanId, viewpointId, heading = heading, elevation = elevation)   
-#             return pose.point
-# =============================================================================
-# =============================================================================
-#         
-#         for batch_idx in range(batch_size):
-#             
-#             #print('{}/{}'.format(batch_idx,batch_size))
-#             pred_i = torch.tensor(instr_pred[batch_idx],device = torch.device('cuda'))
-#             location_end = path_obs[batch_idx][-1]['viewpoint']
-#             #location_start = path_obs[batch_idx][0]['viewpoint']
-#             ob_1 = start_obs[batch_idx]
-#             scanId = ob_1['scan']
-#             viewpoint = ob_1['viewpoint']
-#             elevation = ob_1['elevation']
-#             heading = ob_1['heading']            
-# 
-#             #dist_i = dist(get_end_pose(pred_i,scanId,viewpoint,heading,elevation),location_end)
-#             #dist_all = dist(location_start,location_end)
-#             #print(dist_i)
-#             end_pose_pred = self.agent.end_pose(pred_i, scanId, viewpoint,heading,elevation)
-#             dist_i = self.env.distances[scanId][end_pose_pred][location_end]
-#             bonus = 3 if dist_i < 3 else 0
-#             bleus.append(dist_i)
-#             
-#             for i in range(len(pred_i)):
-#                 if i == 0:
-#                     G = - (dist_i - self.env.distances[scanId][viewpoint][location_end]) + bonus
-#                 else:    
-#                     end_pose_j = self.agent.end_pose(pred_i[:i], scanId, viewpoint,heading,elevation)
-#                     G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end]) + bonus
-#                     
-#                         
-#                 lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
-#             
-#             
-# =============================================================================
-# =============================================================================
-#             for i in range(len(pred_i)):
-#         
-#                 G = 0
-#                 for j in range(len(pred_i)-i,len(pred_i)+1):
-#                     if j > 1:
-#                         G = G + dist(get_end_pose(pred_i[:j],scanId,viewpoint,heading,elevation),location_end) - dist(get_end_pose(pred_i[:j-1],scanId,viewpoint,heading,elevation),location_end)
-#                     else:
-#                         G = G + dist(get_end_pose(pred_i[:j],scanId,viewpoint,heading,elevation),location_end)
-#                         
-#                 lossRL += - G * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
-# =============================================================================
+
+        
+        for batch_idx in range(batch_size):
+            
+            #print('{}/{}'.format(batch_idx,batch_size))
+            pred_i = instr_pred[batch_idx]
+            if pred_i[-1] == 2:
+                pred_i = pred_i[:-1][::-1] + [2]
+            else: pred_i.reverse()
+            pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
+            location_end = path_obs[batch_idx][-1]['viewpoint']
+            #location_start = path_obs[batch_idx][0]['viewpoint']
+            ob_1 = start_obs[batch_idx]
+            scanId = ob_1['scan']
+            viewpoint = ob_1['viewpoint']
+            elevation = ob_1['elevation']
+            heading = ob_1['heading']            
+
+            #dist_i = dist(get_end_pose(pred_i,scanId,viewpoint,heading,elevation),location_end)
+            #dist_all = dist(location_start,location_end)
+            #print(dist_i)
+            traj = self.agent.generate(self.sim, pred_i, scanId, viewpoint,heading,elevation)
+            end_pose_pred = traj['trajectory'][-1][0]
+            dist_i = self.env.distances[scanId][end_pose_pred][location_end]
+            bonus = 3 if dist_i < 3 else 0
+            bleus.append(dist_i)
+            
+            for i in range(len(pred_i)):
+                if i == 0:
+                    G = - (dist_i - self.env.distances[scanId][viewpoint][location_end]) + bonus
+                else:    
+                    traj_j = self.agent.generate(self.sim, pred_i[:i], scanId, viewpoint,heading,elevation)
+                    end_pose_j = traj_j['trajectory'][-1][0]
+                    G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end]) + bonus
+                    
+                        
+                lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
 # =============================================================================
 #         #####################################################################################        
 #         ##########################bleu reward###############################################        
@@ -394,19 +381,17 @@ class Seq2SeqSpeaker(object):
 #                 
 # =============================================================================
         #######################################################################################################
-# =============================================================================
-#         npy = np.load('VLN_training_batch.npy')
-#         bleu_avg = sum(bleus)/len(bleus)
-#         print(bleu_avg,pred_i)
-#         npy = np.append(npy,bleu_avg)
-#         #np.save('BLEU_training.npy',npy)
-#         with open('VLN_training_batch.npy', 'wb') as f:
-# 
-#             np.save(f, npy)
-#         #print(lossRL, loss)
-#         #loss = 0.5 * lossRL + 0.5 * loss   
-#         loss = lossRL
-# =============================================================================
+        npy = np.load('VLN_training_batch10.npy')
+        bleu_avg = sum(bleus)/len(bleus)
+        print(bleu_avg,pred_i)
+        npy = np.append(npy,bleu_avg)
+        #np.save('BLEU_training.npy',npy)
+        with open('VLN_training_batch10.npy', 'wb') as f:
+
+            np.save(f, npy)
+        #print(lossRL, loss)
+        #loss = 0.5 * lossRL + 0.5 * loss   
+        loss = lossRL
         for item in outputs:
             item['words'] = self.env.tokenizer.decode_sentence(item['word_indices'], break_on_eos=True, join=False)
 

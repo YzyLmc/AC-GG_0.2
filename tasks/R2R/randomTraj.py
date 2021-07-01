@@ -9,6 +9,7 @@ Created on Sat May 22 22:31:46 2021
 import env
 import MatterSim
 import math
+import random
 
 #init m3d
 sim = MatterSim.Simulator()

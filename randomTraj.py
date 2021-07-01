@@ -122,7 +122,7 @@ if __name__ == '__main__':
 #     print(traj)
 # =============================================================================
     
-    with open('tasks/R2R/data/R2R_val_unseen.json') as f:
+    with open('tasks/R2R/data/R2R_val_seen.json') as f:
         data = json.load(f)
         
     scans = []
@@ -134,7 +134,7 @@ if __name__ == '__main__':
         
     itr = 0
     success = 0
-        
+    distance_all = 0    
     for i in range(len(data)):
         scan = data[i]['scan']
         viewpoint_st = data[i]['path'][0]
@@ -151,11 +151,13 @@ if __name__ == '__main__':
         
         if distance < 3:
             success += 1
+        distance_all += distance
             
         itr += 1
     
     sr = success/itr
-    print('sr = {}/{} = {}'.format(success,itr,sr))
+    avg_dis = distance_all/itr
+    print('sr = {}/{} = {}, avg_dist={}'.format(success,itr,sr,avg_dis))
             
         
             

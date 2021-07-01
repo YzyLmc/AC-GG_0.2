@@ -213,7 +213,7 @@ def train_setup(args, batch_size=BATCH_SIZE):
     train_splits = ['train']
     # val_splits = ['train_subset', 'val_seen', 'val_unseen']
     #val_splits = ['val_seen', 'val_unseen']
-    val_splits = ['val_unseen']
+    val_splits = ['val_seen']
     if args.use_test_set:
         val_splits.append('test')
 

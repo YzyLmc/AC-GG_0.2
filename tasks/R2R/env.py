@@ -690,8 +690,8 @@ class R2RBatch():
         self.scans = set(self.scans)
         self.splits = splits
         self.seed = seed
-        random.seed(self.seed)
-        random.shuffle(self.data)
+        #random.seed(self.seed)
+        #random.shuffle(self.data)
         self.ix = 0
         self.batch_size = batch_size
         self._load_nav_graphs()

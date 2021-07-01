@@ -9,12 +9,12 @@ Created on Thu May 13 11:10:29 2021
 
 import numpy as np
 
-data = np.load('VLN_training_batch.npy')[:160]
+data = np.load('VLN_training_batch10.npy')
 
 import matplotlib.pyplot as plt
 
 data_smooth = np.zeros(len(data))
-num = 30
+num = 10
 for i in range(len(data_smooth)):
     if i > num-1:
         data_smooth[i] = sum(data[i-num:i+1])/(num+1)
@@ -23,10 +23,10 @@ for i in range(len(data_smooth)):
 plt.plot(data_smooth[5:])
 plt.show()
 
-#%%
 # =============================================================================
+# #%%
 # npy = np.array(0)
-# with open('VLN_training_batch.npy', 'wb') as f:
+# with open('VLN_training_batch10.npy', 'wb') as f:
 # 
 #     np.save(f, npy)
 # =============================================================================

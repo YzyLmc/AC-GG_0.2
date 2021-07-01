@@ -45,7 +45,7 @@ hidden_size = 512
 bidirectional = False
 dropout_ratio = 0.5
 feedback_method = 'sample'  # teacher or sample
-learning_rate = 0.0001 #original laening rate
+learning_rate = 0.0001 #original learning rate 0.0001
 #learning_rate = 0.005 #Bertscore LR
 weight_decay = 0.0005
 FEATURE_SIZE = 2048+128
@@ -248,7 +248,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
 
 
 def train_setup(args):
-    train_splits = ['train']
+    train_splits = ['val_seen']
     # val_splits = ['train_subset', 'val_seen', 'val_unseen']
     val_splits = ['val_seen', 'val_unseen']
     vocab = TRAIN_VOCAB
