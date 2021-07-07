@@ -243,33 +243,6 @@ class Seq2SeqSpeaker(object):
         bleus = []
         lossRL = 0
         #####################distance as reward##################################
-# =============================================================================
-#         #first load pretrained follower
-#         MAX_INPUT_LENGTH = 80
-#         feature_size = 2048+128
-#         max_episode_len = 10
-#         word_embedding_size = 300
-#         glove_path = 'tasks/R2R/data/train_glove.npy'
-#         action_embedding_size = 2048+128
-#         hidden_size = 512
-#         dropout_ratio = 0.5
-#         vocab = read_vocab(TRAIN_VOCAB)
-#         tok = Tokenizer(vocab=vocab)
-#         glove = np.load(glove_path)
-#         
-#         encoder = try_cuda(EncoderLSTM(
-#                 len(vocab), word_embedding_size, hidden_size, vocab_pad_idx,
-#                 dropout_ratio, glove=glove))
-#         decoder = try_cuda(AttnDecoderLSTM(
-#             action_embedding_size, hidden_size, dropout_ratio,
-#             feature_size=feature_size))
-#         
-#         agent = Seq2SeqAgent(
-#                 None, "", encoder, decoder, max_episode_len,
-#                 max_instruction_length=MAX_INPUT_LENGTH)
-#         
-#         agent.load('tasks/R2R/snapshots/release/follower_final_release', map_location = torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-# =============================================================================
         #follower will be loaded in advance
 
         
@@ -289,8 +262,6 @@ class Seq2SeqSpeaker(object):
             elevation = ob_1['elevation']
             heading = ob_1['heading']            
 
-            #dist_i = dist(get_end_pose(pred_i,scanId,viewpoint,heading,elevation),location_end)
-            #dist_all = dist(location_start,location_end)
             #print(dist_i)
             traj = self.agent.generate(self.sim, pred_i, scanId, viewpoint,heading,elevation)
             end_pose_pred = traj['trajectory'][-1][0]
@@ -381,12 +352,12 @@ class Seq2SeqSpeaker(object):
 #                 
 # =============================================================================
         #######################################################################################################
-        npy = np.load('VLN_training_batch10.npy')
+        npy = np.load('VLN_training_nobackprop.npy')
         bleu_avg = sum(bleus)/len(bleus)
         print(bleu_avg,pred_i)
         npy = np.append(npy,bleu_avg)
         #np.save('BLEU_training.npy',npy)
-        with open('VLN_training_batch10.npy', 'wb') as f:
+        with open('VLN_training_nobackprop.npy', 'wb') as f:
 
             np.save(f, npy)
         #print(lossRL, loss)
@@ -438,7 +409,7 @@ class Seq2SeqSpeaker(object):
         path_obs, path_actions, encoded_instructions = self.env.gold_obs_actions_and_instructions(self.max_episode_len, load_next_minibatch=load_next_minibatch)
         outputs, loss = self._score_obs_actions_and_instructions(path_obs, path_actions, encoded_instructions, self.feedback)
         self.loss = loss
-        self.losses.append(loss.item())
+        #self.losses.append(loss.item())
         return outputs
 
     def beam_search(self, beam_size, path_obs, path_actions):
@@ -624,7 +595,7 @@ class Seq2SeqSpeaker(object):
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
             self.rollout()
-            self.loss.backward()
+            #self.loss.backward()
             encoder_optimizer.step()
             decoder_optimizer.step()
 

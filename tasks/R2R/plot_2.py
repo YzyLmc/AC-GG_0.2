@@ -9,27 +9,25 @@ Created on Thu May 13 11:10:29 2021
 
 import numpy as np
 
-data = np.load('VLN_training_batch10.npy')
+data = np.load('VLN_training_nobackprop.npy')
 
 import matplotlib.pyplot as plt
 
 data_smooth = np.zeros(len(data))
-num = 10
+num = 100
 for i in range(len(data_smooth)):
     if i > num-1:
         data_smooth[i] = sum(data[i-num:i+1])/(num+1)
     else:
         data_smooth[i] = sum(data[:i+1])/(i+1)
-plt.plot(data_smooth[5:])
+plt.plot(data_smooth[1:])
 plt.show()
 
-# =============================================================================
-# #%%
-# npy = np.array(0)
-# with open('VLN_training_batch10.npy', 'wb') as f:
-# 
-#     np.save(f, npy)
-# =============================================================================
+#%%
+npy = np.array(0)
+with open('VLN_training_rnobackprop.npy', 'wb') as f:
+
+    np.save(f, npy)
 # =============================================================================
 # #%%
 # data_1 = np.load('BLEU_training.npy')
