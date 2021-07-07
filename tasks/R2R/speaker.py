@@ -409,7 +409,7 @@ class Seq2SeqSpeaker(object):
         path_obs, path_actions, encoded_instructions = self.env.gold_obs_actions_and_instructions(self.max_episode_len, load_next_minibatch=load_next_minibatch)
         outputs, loss = self._score_obs_actions_and_instructions(path_obs, path_actions, encoded_instructions, self.feedback)
         self.loss = loss
-        #self.losses.append(loss.item())
+        self.losses.append(loss.item())
         return outputs
 
     def beam_search(self, beam_size, path_obs, path_actions):
@@ -595,7 +595,7 @@ class Seq2SeqSpeaker(object):
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
             self.rollout()
-            #self.loss.backward()
+            self.loss.backward()
             encoder_optimizer.step()
             decoder_optimizer.step()
 
