@@ -248,7 +248,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
 
 
 def train_setup(args):
-    train_splits = ['val_seen']
+    train_splits = ['train']
     # val_splits = ['train_subset', 'val_seen', 'val_unseen']
     val_splits = ['val_seen', 'val_unseen']
     vocab = TRAIN_VOCAB
@@ -264,6 +264,7 @@ def train_setup(args):
         train_env, "", encoder, decoder,  MAX_INSTRUCTION_LENGTH, follower = follower)
     
     agent.load('tasks/R2R/snapshots/release/speaker_final_release')
+    #agent.load('tasks/R2R/speaker/snapshots/speaker_teacher_imagenet_mean_pooled_train_iter_20000')
     print('pretrained model loaded')
     return agent, train_env, val_envs
 

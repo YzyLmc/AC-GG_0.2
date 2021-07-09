@@ -8,7 +8,7 @@ Created on Mon Apr 12 01:11:41 2021
 
 
 import utils
-from utils import try_cuda, read_vocab
+from utils import try_cuda, read_vocab, Tokenizer
 import train_speaker
 import env
 import numpy as np
@@ -22,7 +22,14 @@ from speaker import Seq2SeqSpeaker
 from model import SpeakerEncoderLSTM, SpeakerDecoderLSTM
 
 from vocab import SUBTRAIN_VOCAB, TRAIN_VOCAB, TRAINVAL_VOCAB
+import argparse
+parser = argparse.ArgumentParser()
+from env import ImageFeatures
+ImageFeatures.add_args(parser)
 
+args, _ = parser.parse_known_args()
+
+image_features_list= ImageFeatures.from_args(args)
 angle_inc = np.pi / 6.
 def build_viewpoint_loc_embedding(viewIndex):
     """
@@ -80,13 +87,14 @@ class rdv():
         state, adj_loc_ls = env._get_panorama_states(self.sim)
         
         assert self.scanId== state.scanId
-        filePath = 'img_features_36*2048/'+ self.scanId + '/' + state.location.viewpointId + '.pt'
-        feature = torch.load(filePath)
+        #filePath = 'img_features_36*2048/'+ self.scanId + '/' + state.location.viewpointId + '.pt'
+        #feature = torch.load(filePath)
+        feature = [f.get_features(state) for f in image_features_list]
         
         #print(feature,_static_loc_embeddings[state.viewIndex])
         #print(feature.size(),_static_loc_embeddings[state.viewIndex].size())
-        feature_with_loc = np.concatenate((feature, _static_loc_embeddings[state.viewIndex]), axis=-1)
-        action_embedding = env._build_action_embedding(adj_loc_ls, feature)
+        feature_with_loc = np.concatenate((feature[0], _static_loc_embeddings[state.viewIndex]), axis=-1)
+        action_embedding = env._build_action_embedding(adj_loc_ls, feature[0])
         ob = {
             'scan' : state.scanId,
             'viewpoint' : state.location.viewpointId,
@@ -156,40 +164,40 @@ decoder = try_cuda(SpeakerDecoderLSTM(
     len(vocab), word_embedding_size, hidden_size, dropout_ratio,
     glove=glove))
 agent = Seq2SeqSpeaker(
-    None, "", encoder, decoder, MAX_INSTRUCTION_LENGTH)
+    tok, "", encoder, decoder, MAX_INSTRUCTION_LENGTH)
 agent.load('tasks/R2R/snapshots/release/speaker_final_release', map_location = 'cpu')
 if __name__ == "__main__":
-# =============================================================================
-#     traj = {'scan':'5q7pvUzZiYa', 'path':["7dc12a67ddfc4a4a849ce620db5b777b", "0e84cf4dec784bc28b78a80bee35c550", "a77784b955454209857d745976a1676d", "67971a17c26f4e2ca117b4fca73507fe", "8db06d3a0dd44508b3c078d60126ce19", "43ac37dfa1db4a13a8a9df4e454eb016", "4bd82c990a6548a994daa97c8f52db06", "6d11ca4d41e04bb1a725c2223c36b2aa", "29fb3c58b29348558d36a9f9440a1379", "c23f26401359426982d11ca494ee739b", "397403366d784caf804d741f32fd68b9", "3c6a35e15ada4b649990d6568cce8bd9", "55e4436f528c4bf09e4550079c572f7b", "69fad7dd177847dbabf69e8fb7c00ddf", "c629c7f1cf6f47a78c45a8ae9ff82247", "21fca0d6192940e580587fe317440f56", "4b85d61dd3a94e8a812affe78f3a322d", "3c025b8e3d2040969cd00dd0e9f29b09"], 'heading':0.0,'elevation_init':0.0}
-#     
-#     rdv_test = rdv(traj)
-#     
-#     path_obs, path_actions = rdv_test.obs_and_acts()   
-#         # predicted
-#     decoded_words = agent.generate(path_obs,path_actions,vocab)
-#     
-#     print(' '.join(decoded_words))
-# =============================================================================
-    
-    with open('tasks/R2R/data/R2R_val_unseen.json') as f:
-        data = json.load(f)
-        
-    traj = data[8]
+    traj = {'scan':'5q7pvUzZiYa', 'path':["7dc12a67ddfc4a4a849ce620db5b777b", "0e84cf4dec784bc28b78a80bee35c550", "a77784b955454209857d745976a1676d", "67971a17c26f4e2ca117b4fca73507fe", "8db06d3a0dd44508b3c078d60126ce19", "43ac37dfa1db4a13a8a9df4e454eb016", "4bd82c990a6548a994daa97c8f52db06", "6d11ca4d41e04bb1a725c2223c36b2aa", "29fb3c58b29348558d36a9f9440a1379", "c23f26401359426982d11ca494ee739b", "397403366d784caf804d741f32fd68b9", "3c6a35e15ada4b649990d6568cce8bd9", "55e4436f528c4bf09e4550079c572f7b", "69fad7dd177847dbabf69e8fb7c00ddf", "c629c7f1cf6f47a78c45a8ae9ff82247", "21fca0d6192940e580587fe317440f56", "4b85d61dd3a94e8a812affe78f3a322d", "3c025b8e3d2040969cd00dd0e9f29b09"], 'heading':0.0,'elevation_init':0.0}
     
     rdv_test = rdv(traj)
     
     path_obs, path_actions = rdv_test.obs_and_acts()   
-         # predicted
-    decoded_words = agent.generate(path_obs,path_actions,vocab)  
+        # predicted
+    decoded_words = agent.speak(path_obs,path_actions,vocab)
     
-    instr_generated = [' '.join(decoded_words)]        
-    instr_refs = [traj['instructions']]
-    
-    from bert_score import BERTScorer
-    scorer = BERTScorer(lang='en', rescale_with_baseline = True)
-    
-    P, R ,F1 = scorer.score(instr_generated, instr_refs)
-    print(F1)
+    print(' '.join(decoded_words))
+# =============================================================================
+#     
+#     with open('tasks/R2R/data/R2R_val_unseen.json') as f:
+#         data = json.load(f)
+#         
+#     traj = data[8]
+#     
+#     rdv_test = rdv(traj)
+#     
+#     path_obs, path_actions = rdv_test.obs_and_acts()   
+#          # predicted
+#     decoded_words = agent.generate(path_obs,path_actions,vocab)  
+#     
+#     instr_generated = [' '.join(decoded_words)]        
+#     instr_refs = [traj['instructions']]
+#     
+#     from bert_score import BERTScorer
+#     scorer = BERTScorer(lang='en', rescale_with_baseline = True)
+#     
+#     P, R ,F1 = scorer.score(instr_generated, instr_refs)
+#     print(F1)
+# =============================================================================
     
     
         

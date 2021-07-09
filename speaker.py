@@ -409,7 +409,7 @@ class Seq2SeqSpeaker(object):
         return outputs, loss
     
     
-    def generate(self, path_obs, path_actions, encoded_instructions = [0]):
+    def speak(self, path_obs, path_actions, vocab, encoded_instructions = [0]):
         
         start_obs, batched_image_features, batched_action_embeddings, path_mask, \
         path_lengths, encoded_instructions, perm_indices = \
@@ -436,12 +436,12 @@ class Seq2SeqSpeaker(object):
             w_t = m.sample()
             
             word_idx = w_t[0].item()
-            print(word_idx)
+            #print(word_idx)
             word_indices.append(word_idx)
             if ended.all():
                 break
             
-        decoded_words = self.env.tokenizer.decode_sentence(word_indices, break_on_eos=True, join=False)
+        decoded_words = self.env.decode_sentence(word_indices, break_on_eos=True, join=False)
         
         return decoded_words
     

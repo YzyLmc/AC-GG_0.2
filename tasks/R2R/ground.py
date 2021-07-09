@@ -162,9 +162,9 @@ if __name__ == '__main__':
     sim.setCameraResolution(640, 480)
     sim.setCameraVFOV(math.radians(60))
     sim.init()
-    with open('tasks/R2R/data/R2R_val_seen.json') as f:
+    with open('tasks/R2R/data/R2R_val_unseen.json') as f:
         data_gt = json.load(f)
-    with open('tasks/R2R/speaker/VLN100_val_seen.json') as f:
+    with open('tasks/R2R/speaker/VLN400_val_unseen.json') as f:
         data_pred = json.load(f)
         
     scans = []

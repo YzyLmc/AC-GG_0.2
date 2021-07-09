@@ -245,65 +245,65 @@ class Seq2SeqSpeaker(object):
         #####################distance as reward##################################
         #follower will be loaded in advance
 
-        
-        for batch_idx in range(batch_size):
-            
-            #print('{}/{}'.format(batch_idx,batch_size))
-            pred_i = instr_pred[batch_idx]
-            if pred_i[-1] == 2:
-                pred_i = pred_i[:-1][::-1] + [2]
-            else: pred_i.reverse()
-            pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
-            location_end = path_obs[batch_idx][-1]['viewpoint']
-            #location_start = path_obs[batch_idx][0]['viewpoint']
-            ob_1 = start_obs[batch_idx]
-            scanId = ob_1['scan']
-            viewpoint = ob_1['viewpoint']
-            elevation = ob_1['elevation']
-            heading = ob_1['heading']            
-
-            #print(dist_i)
-            traj = self.agent.generate(self.sim, pred_i, scanId, viewpoint,heading,elevation)
-            end_pose_pred = traj['trajectory'][-1][0]
-            dist_i = self.env.distances[scanId][end_pose_pred][location_end]
-            bonus = 3 if dist_i < 3 else 0
-            bleus.append(dist_i)
-            
-            for i in range(len(pred_i)):
-                if i == 0:
-                    G = - (dist_i - self.env.distances[scanId][viewpoint][location_end]) + bonus
-                else:    
-                    traj_j = self.agent.generate(self.sim, pred_i[:i], scanId, viewpoint,heading,elevation)
-                    end_pose_j = traj_j['trajectory'][-1][0]
-                    G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end]) + bonus
-                    
-                        
-                lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
 # =============================================================================
-#         #####################################################################################        
-#         ##########################bleu reward###############################################        
-#                 #if pred_i[i] == vocab_eos_idx:
-#                 #    bleus.append(BLEU([seq_i],pred_i))
-#                 #    break
-#         #print(output_soft,output_soft.size(),instr_pred.size(),instr_seq.size())
-#         #print(sum(bleus)/len(bleus))
-#         for batch_idx in range(batch_size):
-#             #print(batch_idx)
-#             pred_i = instr_pred[batch_idx]
-#             seq_i = instr_seq[batch_idx]
-#             #print(seq_i, pred_i)
-#             bleus.append(BLEU([seq_i],pred_i))
-#             for i in range(len(pred_i)):
 #         
-#                 G = 0
-#                 for j in range(len(pred_i)-i,len(pred_i)+1):
-#                     if j > 1:
-#                         G = G + BLEU([seq_i],pred_i[:j]) - BLEU([seq_i],pred_i[:j-1])
-#                     else:
-#                         G = G + BLEU([seq_i],pred_i[:j])
+#         for batch_idx in range(batch_size):
+#             
+#             #print('{}/{}'.format(batch_idx,batch_size))
+#             pred_i = instr_pred[batch_idx]
+#             if pred_i[-1] == 2:
+#                 pred_i = pred_i[:-1][::-1] + [2]
+#             else: pred_i.reverse()
+#             pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
+#             location_end = path_obs[batch_idx][-1]['viewpoint']
+#             #location_start = path_obs[batch_idx][0]['viewpoint']
+#             ob_1 = start_obs[batch_idx]
+#             scanId = ob_1['scan']
+#             viewpoint = ob_1['viewpoint']
+#             elevation = ob_1['elevation']
+#             heading = ob_1['heading']            
+# 
+#             #print(dist_i)
+#             traj = self.agent.generate(self.sim, pred_i, scanId, viewpoint,heading,elevation)
+#             end_pose_pred = traj['trajectory'][-1][0]
+#             dist_i = self.env.distances[scanId][end_pose_pred][location_end]
+#             bonus = 3 if dist_i < 3 else 0
+#             bleus.append(dist_i)
+#             
+#             for i in range(len(pred_i)):
+#                 if i == 0:
+#                     G = - (dist_i - self.env.distances[scanId][viewpoint][location_end]) + bonus
+#                 else:    
+#                     traj_j = self.agent.generate(self.sim, pred_i[:i], scanId, viewpoint,heading,elevation)
+#                     end_pose_j = traj_j['trajectory'][-1][0]
+#                     G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end]) + bonus
+#                     
 #                         
-#                 lossRL += - G * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
+#                 lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
 # =============================================================================
+        #####################################################################################        
+        ##########################bleu reward###############################################        
+                #if pred_i[i] == vocab_eos_idx:
+                #    bleus.append(BLEU([seq_i],pred_i))
+                #    break
+        #print(output_soft,output_soft.size(),instr_pred.size(),instr_seq.size())
+        #print(sum(bleus)/len(bleus))
+        for batch_idx in range(batch_size):
+            #print(batch_idx)
+            pred_i = instr_pred[batch_idx]
+            seq_i = instr_seq[batch_idx]
+            #print(seq_i, pred_i)
+            bleus.append(BLEU([seq_i],pred_i))
+            for i in range(len(pred_i)):
+        
+                G = 0
+                for j in range(len(pred_i)-i,len(pred_i)+1):
+                    if j > 1:
+                        G = G + BLEU([seq_i],pred_i[:j]) - BLEU([seq_i],pred_i[:j-1])
+                    else:
+                        G = G + BLEU([seq_i],pred_i[:j])
+                        
+                lossRL += - G * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
 # =============================================================================
 #         #######################################################################################################
 #         ###########################Bertscore reward############################################################
