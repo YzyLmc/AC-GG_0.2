@@ -36,7 +36,7 @@ PLOT_DIR = 'tasks/R2R/speaker/plots/'
 # TODO: how much is this truncating instructions?
 MAX_INSTRUCTION_LENGTH = 80
 
-batch_size = 10
+batch_size = 100
 max_episode_len = 10
 word_embedding_size = 300
 glove_path = 'tasks/R2R/data/train_glove.npy'
@@ -45,7 +45,7 @@ hidden_size = 512
 bidirectional = False
 dropout_ratio = 0.5
 feedback_method = 'sample'  # teacher or sample
-learning_rate = 0.00001 #original learning rate 0.0001
+learning_rate = 0.000001 #original learning rate 0.0001
 #learning_rate = 0.005 #Bertscore LR
 weight_decay = 0.0005
 FEATURE_SIZE = 2048+128
