@@ -27,7 +27,7 @@ from bert_score import BERTScorer
 from follower import Seq2SeqAgent
 from model import EncoderLSTM, AttnDecoderLSTM
 
-#scorer = BERTScorer(lang='en', rescale_with_baseline = True)
+scorer = BERTScorer(lang='en', rescale_with_baseline = True)
 
 RESULT_DIR = 'tasks/R2R/speaker/results/'
 SNAPSHOT_DIR = 'tasks/R2R/speaker/snapshots/'
@@ -261,7 +261,7 @@ def train_setup(args):
     train_env, val_envs, encoder, decoder = make_env_and_models(
         args, vocab, train_splits, val_splits)
     agent = Seq2SeqSpeaker(
-        train_env, "", encoder, decoder,  MAX_INSTRUCTION_LENGTH, follower = follower)
+        train_env, "", encoder, decoder,  MAX_INSTRUCTION_LENGTH, scorer=scorer, tokenizer=tok, follower = follower)
     
     agent.load('tasks/R2R/snapshots/release/speaker_final_release')
     #agent.load('tasks/R2R/speaker/snapshots/speaker_teacher_imagenet_mean_pooled_train_iter_20000')
