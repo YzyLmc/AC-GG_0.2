@@ -45,11 +45,14 @@ def add_backed_ins(lang): # translate one instance
     interval_sentence = translator.translate(ins,lang_tgt=lang)
     translated_back = translator.translate(interval_sentence, lang_tgt='en') 
     
+    time.sleep(5)
+    
     return translated_back
     
 pool = ThreadPool(16)
 
 for i in range(len(data)):
+    print(i)
     instance = data[i]
     ins_ls = instance['instructions']
     for ins in ins_ls:
@@ -76,9 +79,11 @@ for i in range(len(data)):
         filename = 'R2R_aug_snapshot/R2R_train_augmented_{}.json'.format(i)
         with open(filename,'w') as f:
             json.dump(data_new,f)
-    # sleep in case of being blocked
-    if i % 5 == 0:
-        time.sleep(45)
+# =============================================================================
+#     # sleep in case of being blocked
+#     if i % 3 == 0:
+#         time.sleep(45)
+# =============================================================================
     
 #save new dataset
 with open('R2R_train_augmented.json','w') as f:
