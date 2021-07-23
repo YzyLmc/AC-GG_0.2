@@ -9,8 +9,9 @@ Created on Wed May 26 22:40:07 2021
 
 import json
 import numpy as np
+import torch
 
-with open('speaker/_val_unseen.json') as f:   
+with open('speaker/BERT400_val_unseen.json') as f:   
     
     result = json.load(f)
     
@@ -36,7 +37,7 @@ for traj in answer:
         
         _, _, F1 = scorer.score(instr_pred, [instr_ans])
         
-        scores.append(F1)
+        scores.append(F1.numpy())
         
 print(np.mean(scores))
 

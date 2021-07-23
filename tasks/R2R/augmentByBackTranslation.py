@@ -90,7 +90,7 @@ for i in range(i_init, len(data)):
                 data_new[i]['instructions'].append(res_i)
                 
     # sleep in case of being blocked
-    if i % 30 == 0:
+    if i % 15 == 0:
         time.sleep(600)
         
     # timer and save snapshots

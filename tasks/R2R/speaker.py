@@ -306,60 +306,64 @@ class Seq2SeqSpeaker(object):
 #                         
 #                 lossRL += - G * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
 # =============================================================================
+# =============================================================================
+#         #######################################################################################################
+#         ###########################Bertscore reward############################################################
+#         #vocab = read_vocab(TRAIN_VOCAB)
+#         #tok = Tokenizer(vocab=vocab)
+# 
+#     
+#         def get_instr_list(ls):
+#             ls_ls=[]
+#             for i in range(len(ls)):
+#                 ls_ls.append([self.tok.decode_sentence(ls[:i+1],break_on_eos=True,join=True)])
+#                 
+#             return ls_ls
+#         
+#         def get_bscore(ls,ref):
+#             ls_ls = get_instr_list(ls)
+#             bscore_ls = []
+#             for cand in ls_ls:
+#                 _, _, F1 = self.scorer.score(cand,[ref])
+#                 bscore_ls.append(F1)
+#             return bscore_ls
+#                 
+#         lamda = 0.95
+#         for batch_idx in range(batch_size):
+#             #print(batch_idx)
+#             pred_i = instr_pred[batch_idx]
+#             #pred_i = [tok.decode_sentence(pred_i,break_on_eos=True,join=True)]
+#             
+#             seq_i = instr_seq[batch_idx]
+#             seq_i = [self.tok.decode_sentence(seq_i,break_on_eos=True,join=True)]
+#             bscore_ls = get_bscore(pred_i,seq_i)
+# 
+#             bleus.append(bscore_ls[-1])
+#             
+#             
+#             for i in range(len(pred_i)):  
+#                 G = 0
+#                 for j in range(len(pred_i)-i-1,len(pred_i)):
+#                     if j > 0:
+#                         t = j - (len(pred_i)-i-1)
+#                         G += (bscore_ls[j]-bscore_ls[j-1])*np.power(lamda,t)
+#                     else:
+#                         G += bscore_ls[j]
+#                 lossRL += - G.cuda() * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
+#                 
+# =============================================================================
+                
         #######################################################################################################
-        ###########################Bertscore reward############################################################
-        #vocab = read_vocab(TRAIN_VOCAB)
-        #tok = Tokenizer(vocab=vocab)
-
-    
-        def get_instr_list(ls):
-            ls_ls=[]
-            for i in range(len(ls)):
-                ls_ls.append([self.tok.decode_sentence(ls[:i+1],break_on_eos=True,join=True)])
-                
-            return ls_ls
-        
-        def get_bscore(ls,ref):
-            ls_ls = get_instr_list(ls)
-            bscore_ls = []
-            for cand in ls_ls:
-                _, _, F1 = self.scorer.score(cand,[ref])
-                bscore_ls.append(F1)
-            return bscore_ls
-                
-        lamda = 0.95
-        for batch_idx in range(batch_size):
-            #print(batch_idx)
-            pred_i = instr_pred[batch_idx]
-            #pred_i = [tok.decode_sentence(pred_i,break_on_eos=True,join=True)]
-            
-            seq_i = instr_seq[batch_idx]
-            seq_i = [self.tok.decode_sentence(seq_i,break_on_eos=True,join=True)]
-            bscore_ls = get_bscore(pred_i,seq_i)
-
-            bleus.append(bscore_ls[-1])
-            
-            
-            for i in range(len(pred_i)):  
-                G = 0
-                for j in range(len(pred_i)-i-1,len(pred_i)):
-                    if j > 0:
-                        t = j - (len(pred_i)-i-1)
-                        G += (bscore_ls[j]-bscore_ls[j-1])*np.power(lamda,t)
-                    else:
-                        G += bscore_ls[j]
-                lossRL += - G.cuda() * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
-                
-                
-        #######################################################################################################
-        npy = np.load('VLN_training_nobackprop.npy')
-        bleu_avg = sum(bleus)/len(bleus)
-        print(bleu_avg,pred_i)
-        npy = np.append(npy,bleu_avg)
-        #np.save('BLEU_training.npy',npy)
-        with open('VLN_training_nobackprop.npy', 'wb') as f:
-
-            np.save(f, npy)
+# =============================================================================
+#         npy = np.load('VLN_training_nobackprop.npy')
+#         bleu_avg = sum(bleus)/len(bleus)
+#         print(bleu_avg,pred_i)
+#         npy = np.append(npy,bleu_avg)
+#         #np.save('BLEU_training.npy',npy)
+#         with open('VLN_training_nobackprop.npy', 'wb') as f:
+# 
+#             np.save(f, npy)
+# =============================================================================
         #print(lossRL, loss)
         #loss = 0.5 * lossRL + 0.5 * loss   
         loss = lossRL

@@ -109,53 +109,6 @@ if __name__ == '__main__':
 #     
 #     print(traj)
 # =============================================================================
-# =============================================================================
-#     sim = MatterSim.Simulator()
-#     sim.setRenderingEnabled(False)
-#     sim.setDiscretizedViewingAngles(True)
-#     sim.setCameraResolution(640, 480)
-#     sim.setCameraVFOV(math.radians(60))
-#     sim.init()
-#     with open('tasks/R2R/data/R2R_val_unseen.json') as f:
-#         data = json.load(f)
-#         
-#     scans = []
-#     for traj in data:
-#         if traj['scan'] not in scans:
-#             scans.append(traj['scan'])
-#             
-#     distances = _load_nav_graphs(scans)
-#         
-#     itr = 0
-#     success = 0   
-#     distance_all = 0
-#     for i in range(len(data)):
-#         scan = data[i]['scan']
-#         viewpoint_st = data[i]['path'][0]
-#         viewpoint_end = data[i]['path'][-1]
-#         heading = data[i]['heading']   
-#         #end_pose_gt = get_gt_end_pose(scan, viewpoint_end)
-#         ins = data[i]['instructions']
-#         for ins_i in ins:
-#             encoded_instructions, _ = tok.encode_sentence(ins_i)
-#             encoded_instructions = np.concatenate((np.flip(encoded_instructions,0),[vocab_eos_idx]))
-#             encoded_instructions = torch.tensor(encoded_instructions, device = device)
-#             traj = agent.generate(sim, encoded_instructions, scan, viewpoint_st,heading=heading)
-#             end_pose_pred = traj['trajectory'][-1][0]
-#             #end_pose_pred = get_end_pose(agent,encoded_instructions, scan, viewpoint_st)
-#             #distance = dist(end_pose_pred, end_pose_gt)
-#             distance = distances[scan][viewpoint_end][end_pose_pred]
-#             
-#             if distance < 3:
-#                 success += 1
-#             distance_all += distance    
-#             itr += 1
-#         
-#     sr = success/itr
-#     dis_avg = distance_all/itr
-#     print('sr = {}/{} = {}, avg_ditance = {}'.format(success,itr,sr,dis_avg))
-# =============================================================================
-#################################################################  
     sim = MatterSim.Simulator()
     sim.setRenderingEnabled(False)
     sim.setDiscretizedViewingAngles(True)
@@ -163,49 +116,106 @@ if __name__ == '__main__':
     sim.setCameraVFOV(math.radians(60))
     sim.init()
     with open('tasks/R2R/data/R2R_val_unseen.json') as f:
-        data_gt = json.load(f)
-    with open('tasks/R2R/speaker/VLN400_val_unseen.json') as f:
-        data_pred = json.load(f)
+        data = json.load(f)
         
     scans = []
-    for traj in data_gt:
+    for traj in data:
         if traj['scan'] not in scans:
             scans.append(traj['scan'])
             
     distances = _load_nav_graphs(scans)
-    
-    itr = 0
-    success = 0
         
+    itr = 0
+    success = 0   
     distance_all = 0
-    for traj_gt in data_gt:
-        path_id = traj_gt['path_id']
-        scan = traj_gt['scan']
-        #ins = traj_gt['instructions']
-        path_gt = traj_gt['path']
-        viewpoint_st = path_gt[0]
-        viewpoint_end = path_gt[-1]
-        heading = traj_gt['heading']
-        for i in range(3):
-            long_id = str(path_id) + '_' + str(i)
-            ins_pred = ' '.join(data_pred[long_id]['words'])
-            encoded_instructions, _ = tok.encode_sentence(ins_pred)
+    for i in range(len(data)):
+        scan = data[i]['scan']
+        path_gt = data[i]['path']
+        viewpoint_st = data[i]['path'][0]
+        viewpoint_end = data[i]['path'][-1]
+        heading = data[i]['heading']   
+        #end_pose_gt = get_gt_end_pose(scan, viewpoint_end)
+        ins = data[i]['instructions']
+        for ins_i in ins:
+            encoded_instructions, _ = tok.encode_sentence(ins_i)
             encoded_instructions = np.concatenate((np.flip(encoded_instructions,0),[vocab_eos_idx]))
             encoded_instructions = torch.tensor(encoded_instructions, device = device)
             traj = agent.generate(sim, encoded_instructions, scan, viewpoint_st,heading=heading)
+            path = [traj['trajectory'][i][0] for i in range(len(traj['trajectory']))]
             end_pose_pred = traj['trajectory'][-1][0]
-
             distance = distances[scan][viewpoint_end][end_pose_pred]
             
             if distance < 3:
-                success += 1
-            distance_all += distance
+                suc = 1
+                step_dist = [distances[scan][path[x]][path[x+1]] for x in range(len(path)-1)]
+                length = np.sum(step_dist)
+                
+                reference_dist = [distances[scan][path_gt[x]][path_gt[x+1]] for x in range(len(path_gt)-1)]
+                reference_length = np.sum(reference_dist)
+                spl = suc * reference_length/ max(length,reference_length)
+            
+
+                success += spl
+            #distance_all += distance
                 
             itr += 1
         
     sr = success/itr
-    dis_avg = distance_all/itr
-    print('sr = {}/{} = {}, avg_dis = {}'.format(success,itr,sr, dis_avg))
+    #dis_avg = distance_all/itr
+    print('spl = {}/{} = {}'.format(success,itr,sr))      
+#################################################################  
+# =============================================================================
+#     sim = MatterSim.Simulator()
+#     sim.setRenderingEnabled(False)
+#     sim.setDiscretizedViewingAngles(True)
+#     sim.setCameraResolution(640, 480)
+#     sim.setCameraVFOV(math.radians(60))
+#     sim.init()
+#     with open('tasks/R2R/data/R2R_val_seen.json') as f:
+#         data_gt = json.load(f)
+#     with open('tasks/R2R/speaker/BERT300_val_seen.json') as f:
+#         data_pred = json.load(f)
+#         
+#     scans = []
+#     for traj in data_gt:
+#         if traj['scan'] not in scans:
+#             scans.append(traj['scan'])
+#             
+#     distances = _load_nav_graphs(scans)
+#     
+#     itr = 0
+#     success = 0
+#         
+#     distance_all = 0
+#     for traj_gt in data_gt:
+#         path_id = traj_gt['path_id']
+#         scan = traj_gt['scan']
+#         #ins = traj_gt['instructions']
+#         path_gt = traj_gt['path']
+#         viewpoint_st = path_gt[0]
+#         viewpoint_end = path_gt[-1]
+#         heading = traj_gt['heading']
+#         for i in range(3):
+#             long_id = str(path_id) + '_' + str(i)
+#             ins_pred = ' '.join(data_pred[long_id]['words'])
+#             encoded_instructions, _ = tok.encode_sentence(ins_pred)
+#             encoded_instructions = np.concatenate((np.flip(encoded_instructions,0),[vocab_eos_idx]))
+#             encoded_instructions = torch.tensor(encoded_instructions, device = device)
+#             traj = agent.generate(sim, encoded_instructions, scan, viewpoint_st,heading=heading)
+#             end_pose_pred = traj['trajectory'][-1][0]
+# 
+#             distance = distances[scan][viewpoint_end][end_pose_pred]
+#             
+#             if distance < 3:
+#                 success += 1
+#             distance_all += distance
+#                 
+#             itr += 1
+#         
+#     sr = success/itr
+#     dis_avg = distance_all/itr
+#     print('sr = {}/{} = {}, avg_dis = {}'.format(success,itr,sr, dis_avg))
+# =============================================================================
 # =============================================================================
 #     sim = MatterSim.Simulator()
 #     sim.setRenderingEnabled(False)
@@ -247,7 +257,122 @@ if __name__ == '__main__':
 #     for metric, val in sorted(score_summary.items()):
 #             print("{}\t{}".format(metric, val))
 # =============================================================================
-            
+# =============================================================================
+#     sim = MatterSim.Simulator()
+#     sim.setRenderingEnabled(False)
+#     sim.setDiscretizedViewingAngles(True)
+#     sim.setCameraResolution(640, 480)
+#     sim.setCameraVFOV(math.radians(60))
+#     sim.init()
+#     with open('tasks/R2R/data/R2R_val_seen.json') as f:
+#         data_gt = json.load(f)
+#     with open('tasks/R2R/speaker/origin_val_seen.json') as f:
+#         data_pred = json.load(f)
+#         
+#     scans = []
+#     for traj in data_gt:
+#         if traj['scan'] not in scans:
+#             scans.append(traj['scan'])
+#             
+#     distances = _load_nav_graphs(scans)
+#     
+#     itr = 0
+#     success = 0
+#         
+#     distance_all = 0
+#     for traj_gt in data_gt:
+#         path_id = traj_gt['path_id']
+#         scan = traj_gt['scan']
+#         #ins = traj_gt['instructions']
+#         path_gt = traj_gt['path']
+#         viewpoint_st = path_gt[0]
+#         viewpoint_end = path_gt[-1]
+#         heading = traj_gt['heading']
+#         for i in range(3):
+#             long_id = str(path_id) + '_' + str(i)
+#             ins_pred = ' '.join(data_pred[long_id]['words'])
+#             encoded_instructions, _ = tok.encode_sentence(ins_pred)
+#             encoded_instructions = np.concatenate((np.flip(encoded_instructions,0),[vocab_eos_idx]))
+#             encoded_instructions = torch.tensor(encoded_instructions, device = device)
+#             traj = agent.generate(sim, encoded_instructions, scan, viewpoint_st,heading=heading)
+#             path = [traj['trajectory'][i][0] for i in range(len(traj['trajectory']))]
+#             #end_pose_pred = traj['trajectory'][-1][0]
+# 
+#             #distance = distances[scan][viewpoint_end][end_pose_pred]
+#             distance_to_goal = [distances[scan][x][viewpoint_end] for x in path]
+#             oracle_success = np.any([x<3 for x in distance_to_goal])
+#             success += oracle_success
+#             #distance_all += distance
+#                 
+#             itr += 1
+#         
+#     sr = success/itr
+#     #dis_avg = distance_all/itr
+#     print('oracle sr = {}/{} = {}'.format(success,itr,sr))    
+# =============================================================================
+
+# =============================================================================
+# 
+#     sim = MatterSim.Simulator()
+#     sim.setRenderingEnabled(False)
+#     sim.setDiscretizedViewingAngles(True)
+#     sim.setCameraResolution(640, 480)
+#     sim.setCameraVFOV(math.radians(60))
+#     sim.init()
+#     with open('tasks/R2R/data/R2R_val_unseen.json') as f:
+#         data_gt = json.load(f)
+#     with open('tasks/R2R/speaker/origin_val_unseen.json') as f:
+#         data_pred = json.load(f)
+#         
+#     scans = []
+#     for traj in data_gt:
+#         if traj['scan'] not in scans:
+#             scans.append(traj['scan'])
+#             
+#     distances = _load_nav_graphs(scans)
+#     
+#     itr = 0
+#     success = 0
+#         
+#     distance_all = 0
+#     for traj_gt in data_gt:
+#         path_id = traj_gt['path_id']
+#         scan = traj_gt['scan']
+#         #ins = traj_gt['instructions']
+#         path_gt = traj_gt['path']
+#         viewpoint_st = path_gt[0]
+#         viewpoint_end = path_gt[-1]
+#         heading = traj_gt['heading']
+#         for i in range(3):
+#             long_id = str(path_id) + '_' + str(i)
+#             ins_pred = ' '.join(data_pred[long_id]['words'])
+#             encoded_instructions, _ = tok.encode_sentence(ins_pred)
+#             encoded_instructions = np.concatenate((np.flip(encoded_instructions,0),[vocab_eos_idx]))
+#             encoded_instructions = torch.tensor(encoded_instructions, device = device)
+#             traj = agent.generate(sim, encoded_instructions, scan, viewpoint_st,heading=heading)
+#             path = [traj['trajectory'][i][0] for i in range(len(traj['trajectory']))]
+#             end_pose_pred = traj['trajectory'][-1][0]
+#             distance = distances[scan][viewpoint_end][end_pose_pred]
+#             
+#             if distance < 3:
+#                 suc = 1
+#                 step_dist = [distances[scan][path[x]][path[x+1]] for x in range(len(path)-1)]
+#                 length = np.sum(step_dist)
+#                 
+#                 reference_dist = [distances[scan][path_gt[x]][path_gt[x+1]] for x in range(len(path_gt)-1)]
+#                 reference_length = np.sum(reference_dist)
+#                 spl = suc * reference_length/ max(length,reference_length)
+#             
+# 
+#                 success += spl
+#             #distance_all += distance
+#                 
+#             itr += 1
+#         
+#     sr = success/itr
+#     #dis_avg = distance_all/itr
+#     print('spl = {}/{} = {}'.format(success,itr,sr))     
+# =============================================================================
             
             
 
