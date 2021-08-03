@@ -16,10 +16,10 @@ import json
 # read snapshot
 if args.snapshot:
     checkpoint = args.snapshot
-    json_name = 'R2R_aug_snapshot/R2R_train_augmented_{}.json'.format(args.snapshot)
+    json_name = 'R2R_aug_snapshot/R2R_val_seen_augmented_{}.json'.format(args.snapshot)
 else:
     # read R2R dataset
-    json_name = 'data/R2R_train.json'
+    json_name = 'data/R2R_val_seen.json'
 with open(json_name,'r') as f:
     data = json.load(f)
 from copy import deepcopy
@@ -100,18 +100,18 @@ for i in range(i_init, len(data)):
     
     # save snapshot and delete last one
     if i % 10 == 0:
-        filename = 'R2R_aug_snapshot/R2R_train_augmented_{}.json'.format(i)
+        filename = 'R2R_aug_snapshot/R2R_val_seen_augmented_{}.json'.format(i)
         with open(filename,'w') as f:
             json.dump(data_new,f)
         try:
             old_i = i - 10
-            filename_old = 'R2R_aug_snapshot/R2R_train_augmented_{}.json'.format(old_i)
+            filename_old = 'R2R_aug_snapshot/R2R_val_seen_augmented_{}.json'.format(old_i)
             os.remove(filename_old)
         except:
             continue
         
 #save new dataset
-with open('R2R_train_augmented.json','w') as f:
+with open('R2R_val_seen_augmented.json','w') as f:
     json.dump(data_new,f)
         
         
