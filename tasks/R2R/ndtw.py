@@ -6,52 +6,106 @@ Created on Tue May 11 12:43:36 2021
 @author: ziyi
 """
 
-
-# from utils import try_cuda, read_vocab, Tokenizer, vocab_pad_idx, vocab_eos_idx
-
 import numpy as np
 import json
 import networkx as nx
-# import sys
-# sys.path.append('build')
-# import MatterSim
 import math
 import torch
-# from follower import Seq2SeqAgent
-# from model import EncoderLSTM, AttnDecoderLSTM
-# from vocab import SUBTRAIN_VOCAB, TRAIN_VOCAB, TRAINVAL_VOCAB
 
-# MAX_INPUT_LENGTH = 80
-# feature_size = 2048+128
-# max_episode_len = 10
-# word_embedding_size = 300
-# glove_path = 'tasks/R2R/data/train_glove.npy'
-# action_embedding_size = 2048+128
-# hidden_size = 512
-# dropout_ratio = 0.5
-# vocab = read_vocab(TRAIN_VOCAB)
-# tok = Tokenizer(vocab=vocab)
-# glove = np.load(glove_path)
-#
-# encoder = try_cuda(EncoderLSTM(
-#         len(vocab), word_embedding_size, hidden_size, vocab_pad_idx,
-#         dropout_ratio, glove=glove))
-# decoder = try_cuda(AttnDecoderLSTM(
-#     action_embedding_size, hidden_size, dropout_ratio,
-#     feature_size=feature_size))
-#
-# agent = Seq2SeqAgent(
-#         None, "", encoder, decoder, max_episode_len,
-#         max_instruction_length=MAX_INPUT_LENGTH)
-#
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# agent.load('tasks/R2R/snapshots/release/follower_final_release', map_location = device)
+# CLS and DTW method copy from: https://github.com/aimagelab/perceive-transform-and-act/
+class CLS(object):
+    """ Coverage weighted by length score (CLS).
+        Link to the original paper:
+        https://arxiv.org/abs/1905.12255
+    """
+    def __init__(self, graph, weight='weight', threshold=3.0):
+        """Initializes a CLS object.
+        Args:
+          graph: networkx graph for the environment.
+          weight: networkx edge weight key (str).
+          threshold: distance threshold $d_{th}$ (float).
+        """
+        self.graph = graph
+        self.weight = weight
+        self.threshold = threshold
+        self.distance = dict(
+            nx.all_pairs_dijkstra_path_length(
+                self.graph, weight=self.weight))
+
+    def __call__(self, prediction, reference):
+        """Computes the CLS metric.
+        Args:
+          prediction: list of nodes (str), path predicted by agent.
+          reference: list of nodes (str), the ground truth path.
+        Returns:
+          the CLS between the prediction and reference path (float).
+        """
+
+        def length(nodes):
+            lens = []
+            for edge in zip(nodes[:-1], nodes[1:]):
+                try:
+                    lens.append(self.graph.edges[edge].get(self.weight, 1.0))
+                except KeyError:
+                    pass
+            return np.sum(lens)
+
+        coverage = np.mean([
+            np.exp(-np.min([  # pylint: disable=g-complex-comprehension
+                self.distance[u][v] for v in prediction
+            ]) / self.threshold) for u in reference
+        ])
+        expected = coverage * length(reference)
+        score = expected / (expected + np.abs(expected - length(prediction)))
+        return coverage * score
 
 
-def get_end_pose(agent, encoded_instructions, scanId, viewpointId, heading=0., elevation=0.):
-    pose = agent.end_pose(encoded_instructions, scanId,
-                          viewpointId, heading=heading, elevation=elevation)
-    return pose.point
+class DTW(object):
+    """ Dynamic Time Warping (DTW) evaluation metrics. """
+
+    def __init__(self, graph, weight='weight', threshold=3.0):
+        """Initializes a DTW object.
+        Args:
+          graph: networkx graph for the environment.
+          weight: networkx edge weight key (str).
+          threshold: distance threshold $d_{th}$ (float).
+        """
+        self.graph = graph
+        self.weight = weight
+        self.threshold = threshold
+        self.distance = dict(
+            nx.all_pairs_dijkstra_path_length(self.graph, weight=self.weight))
+
+    def __call__(self, prediction, reference, metric='sdtw'):
+        """Computes DTW metrics.
+        Args:
+          prediction: list of nodes (str), path predicted by agent.
+          reference: list of nodes (str), the ground truth path.
+          metric: one of ['ndtw', 'sdtw', 'dtw'].
+        Returns:
+          the DTW between the prediction and reference path (float).
+        """
+        assert metric in ['ndtw', 'sdtw', 'dtw']
+
+        dtw_matrix = np.inf * np.ones((len(prediction) + 1, len(reference) + 1))
+        dtw_matrix[0][0] = 0
+        for i in range(1, len(prediction)+1):
+            for j in range(1, len(reference)+1):
+                best_previous_cost = min(
+                    dtw_matrix[i-1][j], dtw_matrix[i][j-1], dtw_matrix[i-1][j-1])
+                cost = self.distance[prediction[i-1]][reference[j-1]]
+                dtw_matrix[i][j] = cost + best_previous_cost
+        dtw = dtw_matrix[len(prediction)][len(reference)]
+
+        if metric == 'dtw':
+            return dtw
+
+        ndtw = np.exp(-dtw/(self.threshold * len(reference)))
+        if metric == 'ndtw':
+            return ndtw
+
+        success = self.distance[prediction[-1]][reference[-1]] <= self.threshold
+        return success * ndtw
 
 
 def load_nav_graphs(scans):
@@ -98,31 +152,29 @@ def _load_nav_graphs(scans):
 
 
 if __name__ == '__main__':
-    # =============================================================================
-    #     #change following lines to ground your own instr
-    #     #######################################################################################
-    #     scanId = 'vyrNrziPKCB'
-    #     viewpointId = 'c8a5472a5ef243319ffa4f88d3ddb4bd'
-    #     encoded_instructions, _ = tok.encode_sentence('Exit the room using the door on the left. Turn slightly left and go past the round table an chairs. Wait there. ')
-    #     #######################################################################################
-    #
-    #     encoded_instructions = torch.tensor(encoded_instructions, device = device)
-    #     traj = agent.generate(encoded_instructions, scanId, viewpointId)
-    #
-    #     print(traj)
-    # =============================================================================
-    # sim = MatterSim.Simulator()
-    # sim.setRenderingEnabled(False)
-    # sim.setDiscretizedViewingAngles(True)
-    # sim.setCameraResolution(640, 480)
-    # sim.setCameraVFOV(math.radians(60))
-    # sim.init()
-    with open('tasks/R2R/data/R2R_val_unseen.json') as f:
+    # Load json
+    with open('tasks/R2R/data/R2R_train_aug.json') as f:
         data = json.load(f)
 
+    # Load connectiviy graph
     scans = []
     for traj in data:
         if traj['scan'] not in scans:
             scans.append(traj['scan'])
 
-    distances = _load_nav_graphs(scans)
+    graphs = load_nav_graphs(scans)
+    DTWs = {}
+    for scan in scans:
+        graph_i = graphs[scan]
+        DTWs[scan] = DTW(graph_i)
+
+
+    for i in range(len(data)):
+        scan = data[i]['scan']
+        path_gt = data[i]['path']
+        viewpoint_st = path_gt[0]
+        viewpoint_end = path_gt[-1]
+        graph_i = graph[scan]
+        all_path = nx.all_simple_paths(graph_i, source=viewpoint_st, target=viewpoint_end)
+        for path in all_path:
+            dtw_score = DTWs[scan](path, path_gt)
