@@ -16,10 +16,10 @@ import json
 # read snapshot
 if args.snapshot:
     checkpoint = args.snapshot
-    json_name = 'R2R_aug_snapshot/R2R_val_seen_augmented_{}.json'.format(args.snapshot)
+    json_name = 'R2R_aug_snapshot/R2R_val_unseen_augmented_{}.json'.format(args.snapshot)
 else:
     # read R2R dataset
-    json_name = 'data/R2R_val_seen.json'
+    json_name = 'data/R2R_val_unseen.json'
 with open(json_name,'r') as f:
     data = json.load(f)
 from copy import deepcopy
@@ -42,7 +42,7 @@ lower_bleu = 0.25
 
 
 ############################################################
-#                       augmenting                         # 
+#                       augmenting                         #
 ############################################################
 # timer
 import time
@@ -52,14 +52,14 @@ time_st = time.time()
 from multiprocessing.dummy import Pool as ThreadPool
 
 def add_backed_ins(lang): # translate one instance
-    
+
     interval_sentence = translator.translate(ins,lang_tgt=lang)
-    translated_back = translator.translate(interval_sentence, lang_tgt='en') 
-    
+    translated_back = translator.translate(interval_sentence, lang_tgt='en')
+
     #time.sleep(5)
-    
+
     return translated_back
-    
+
 pool = ThreadPool(16)
 
 # locate checkpoint
@@ -68,13 +68,13 @@ if args.snapshot:
 else:
     i_init = 0
 
-# augmenting    
+# augmenting
 for i in range(i_init, len(data)):
     print(i)
     instance = data[i]
     ins_ls = instance['instructions']
     for ins in ins_ls:
-        
+
 
 # =============================================================================
 #             #translate to target lang and then back
@@ -82,36 +82,34 @@ for i in range(i_init, len(data)):
 #             translated_back = translator.translate(interval_sentence, lang_tgt='en')
 # =============================================================================
         results = pool.map(add_backed_ins, lang_ls)
-        
+
         # calculte bleu score and add good samples to the dataset
         for res_i in results:
-            bscore = BLEU([ins], res_i) 
+            bscore = BLEU([ins], res_i)
             if bscore > lower_bleu and bscore < upper_bleu:
                 data_new[i]['instructions'].append(res_i)
-                
+
     # sleep in case of being blocked
     if i % 15 == 0:
         time.sleep(600)
-        
+
     # timer and save snapshots
-    if i % 100 == 0:        
+    if i % 100 == 0:
         time_i = time.time()
         print('done %s out of %s , time elapsed: %s, remaining: %s'%(i, len(data), time_i-time_st, (time_i-time_st)*len(data)/(3600*(i+1))))
-    
+
     # save snapshot and delete last one
     if i % 10 == 0:
-        filename = 'R2R_aug_snapshot/R2R_val_seen_augmented_{}.json'.format(i)
+        filename = 'R2R_aug_snapshot/R2R_val_unseen_augmented_{}.json'.format(i)
         with open(filename,'w') as f:
             json.dump(data_new,f)
         try:
             old_i = i - 10
-            filename_old = 'R2R_aug_snapshot/R2R_val_seen_augmented_{}.json'.format(old_i)
+            filename_old = 'R2R_aug_snapshot/R2R_val_unseen_augmented_{}.json'.format(old_i)
             os.remove(filename_old)
         except:
             continue
-        
+
 #save new dataset
-with open('R2R_val_seen_augmented.json','w') as f:
+with open('R2R_val_unseen_augmented.json','w') as f:
     json.dump(data_new,f)
-        
-        
