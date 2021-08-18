@@ -55,16 +55,16 @@ class Seq2SeqSpeaker(object):
 
         self.losses = []
         self.max_episode_len = max_episode_len
-        
+
         self.sim = MatterSim.Simulator()
         self.sim.setRenderingEnabled(False)
         self.sim.setDiscretizedViewingAngles(True)
         self.sim.setCameraResolution(640, 480)
         self.sim.setCameraVFOV(math.radians(60))
         self.sim.init()
-        if scorer:    
+        if scorer:
             self.scorer = scorer
-        if tokenizer:            
+        if tokenizer:
             self.tok = tokenizer
         if follower:
             self.agent = follower
@@ -154,11 +154,11 @@ class Seq2SeqSpeaker(object):
         batch_size = len(start_obs)
 
         ctx,h_t,c_t = self.encoder(batched_action_embeddings, batched_image_features)
-        
+
         w_t = try_cuda(Variable(torch.from_numpy(np.full((batch_size,), vocab_bos_idx, dtype='int64')).long(),
                                 requires_grad=False))
         ended = np.array([False] * batch_size)
-        
+
         assert len(perm_indices) == batch_size
         outputs = [None] * batch_size
         for perm_index, src_index in enumerate(perm_indices):
@@ -178,7 +178,7 @@ class Seq2SeqSpeaker(object):
         sequence_scores = try_cuda(torch.zeros(batch_size))
         output_soft = []
         instr_pred = []
-        
+
         for t in range(self.instruction_len):
             h_t,c_t,alpha,logit = self.decoder(w_t.view(-1, 1), h_t, c_t, ctx, path_mask)
             # Supervised training
@@ -232,58 +232,57 @@ class Seq2SeqSpeaker(object):
             for i in range(len(ls)):
                 try:
                     idx = ls[i].index(vocab_eos_idx) + 1
-                except: idx = len(ls[i]) 
+                except: idx = len(ls[i])
 
                 output[i] = ls[i][:idx]
             return output
         instr_pred = unpad(instr_pred)
         instr_seq = unpad(instr_seq)
-                
+
         #print(instr_seq[0],instr_pred[0], BLEU([instr_seq[0]], instr_pred[0],weights=(1/3,1/3,1/3)))
         bleus = []
         lossRL = 0
         #####################distance as reward##################################
         #follower will be loaded in advance
 
+
+         for batch_idx in range(batch_size):
+
+             #print('{}/{}'.format(batch_idx,batch_size))
+             pred_i = instr_pred[batch_idx]
+             if pred_i[-1] == 2:
+                 pred_i = pred_i[:-1][::-1] + [2]
+             else: pred_i.reverse()
+             pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
+             location_end = path_obs[batch_idx][-1]['viewpoint']
+             #location_start = path_obs[batch_idx][0]['viewpoint']
+             ob_1 = start_obs[batch_idx]
+             scanId = ob_1['scan']
+             viewpoint = ob_1['viewpoint']
+             elevation = ob_1['elevation']
+             heading = ob_1['heading']
+
+             #print(dist_i)
+             traj = self.agent.generate(self.sim, pred_i, scanId, viewpoint,heading,elevation)
+             end_pose_pred = traj['trajectory'][-1][0]
+             dist_i = self.env.distances[scanId][end_pose_pred][location_end]
+             bonus = 3 if dist_i < 3 else 0
+             bleus.append(dist_i)
+
+             for i in range(len(pred_i)):
+                 if i == 0:
+                     G = - (dist_i - self.env.distances[scanId][viewpoint][location_end]) + bonus
+                 else:
+                     traj_j = self.agent.generate(self.sim, pred_i[:i], scanId, viewpoint,heading,elevation)
+                     end_pose_j = traj_j['trajectory'][-1][0]
+                     G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end]) + bonus
+
+
+                 lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
+
 # =============================================================================
-#         
-#         for batch_idx in range(batch_size):
-#             
-#             #print('{}/{}'.format(batch_idx,batch_size))
-#             pred_i = instr_pred[batch_idx]
-#             if pred_i[-1] == 2:
-#                 pred_i = pred_i[:-1][::-1] + [2]
-#             else: pred_i.reverse()
-#             pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
-#             location_end = path_obs[batch_idx][-1]['viewpoint']
-#             #location_start = path_obs[batch_idx][0]['viewpoint']
-#             ob_1 = start_obs[batch_idx]
-#             scanId = ob_1['scan']
-#             viewpoint = ob_1['viewpoint']
-#             elevation = ob_1['elevation']
-#             heading = ob_1['heading']            
-# 
-#             #print(dist_i)
-#             traj = self.agent.generate(self.sim, pred_i, scanId, viewpoint,heading,elevation)
-#             end_pose_pred = traj['trajectory'][-1][0]
-#             dist_i = self.env.distances[scanId][end_pose_pred][location_end]
-#             bonus = 3 if dist_i < 3 else 0
-#             bleus.append(dist_i)
-#             
-#             for i in range(len(pred_i)):
-#                 if i == 0:
-#                     G = - (dist_i - self.env.distances[scanId][viewpoint][location_end]) + bonus
-#                 else:    
-#                     traj_j = self.agent.generate(self.sim, pred_i[:i], scanId, viewpoint,heading,elevation)
-#                     end_pose_j = traj_j['trajectory'][-1][0]
-#                     G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end]) + bonus
-#                     
-#                         
-#                 lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
-# =============================================================================
-# =============================================================================
-#         #####################################################################################        
-#         ##########################bleu reward###############################################        
+#         #####################################################################################
+#         ##########################bleu reward###############################################
 #                 #if pred_i[i] == vocab_eos_idx:
 #                 #    bleus.append(BLEU([seq_i],pred_i))
 #                 #    break
@@ -296,63 +295,62 @@ class Seq2SeqSpeaker(object):
 #             #print(seq_i, pred_i)
 #             bleus.append(BLEU([seq_i],pred_i))
 #             for i in range(len(pred_i)):
-#         
+#
 #                 G = 0
 #                 for j in range(len(pred_i)-i,len(pred_i)+1):
 #                     if j > 1:
 #                         G = G + BLEU([seq_i],pred_i[:j]) - BLEU([seq_i],pred_i[:j-1])
 #                     else:
 #                         G = G + BLEU([seq_i],pred_i[:j])
-#                         
+#
 #                 lossRL += - G * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
 # =============================================================================
-# =============================================================================
-#         #######################################################################################################
-#         ###########################Bertscore reward############################################################
-#         #vocab = read_vocab(TRAIN_VOCAB)
-#         #tok = Tokenizer(vocab=vocab)
-# 
-#     
-#         def get_instr_list(ls):
-#             ls_ls=[]
-#             for i in range(len(ls)):
-#                 ls_ls.append([self.tok.decode_sentence(ls[:i+1],break_on_eos=True,join=True)])
-#                 
-#             return ls_ls
-#         
-#         def get_bscore(ls,ref):
-#             ls_ls = get_instr_list(ls)
-#             bscore_ls = []
-#             for cand in ls_ls:
-#                 _, _, F1 = self.scorer.score(cand,[ref])
-#                 bscore_ls.append(F1)
-#             return bscore_ls
-#                 
-#         lamda = 0.95
-#         for batch_idx in range(batch_size):
-#             #print(batch_idx)
-#             pred_i = instr_pred[batch_idx]
-#             #pred_i = [tok.decode_sentence(pred_i,break_on_eos=True,join=True)]
-#             
-#             seq_i = instr_seq[batch_idx]
-#             seq_i = [self.tok.decode_sentence(seq_i,break_on_eos=True,join=True)]
-#             bscore_ls = get_bscore(pred_i,seq_i)
-# 
-#             bleus.append(bscore_ls[-1])
-#             
-#             
-#             for i in range(len(pred_i)):  
-#                 G = 0
-#                 for j in range(len(pred_i)-i-1,len(pred_i)):
-#                     if j > 0:
-#                         t = j - (len(pred_i)-i-1)
-#                         G += (bscore_ls[j]-bscore_ls[j-1])*np.power(lamda,t)
-#                     else:
-#                         G += bscore_ls[j]
-#                 lossRL += - G.cuda() * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
-#                 
-# =============================================================================
-                
+
+         #######################################################################################################
+         ###########################Bertscore reward############################################################
+         #vocab = read_vocab(TRAIN_VOCAB)
+         #tok = Tokenizer(vocab=vocab)
+
+         lossRL2 = 0
+         def get_instr_list(ls):
+             ls_ls=[]
+             for i in range(len(ls)):
+                 ls_ls.append([self.tok.decode_sentence(ls[:i+1],break_on_eos=True,join=True)])
+
+             return ls_ls
+
+         def get_bscore(ls,ref):
+             ls_ls = get_instr_list(ls)
+             bscore_ls = []
+             for cand in ls_ls:
+                 _, _, F1 = self.scorer.score(cand,[ref])
+                 bscore_ls.append(F1)
+             return bscore_ls
+
+         lamda = 0.95
+         for batch_idx in range(batch_size):
+             #print(batch_idx)
+             pred_i = instr_pred[batch_idx]
+             #pred_i = [tok.decode_sentence(pred_i,break_on_eos=True,join=True)]
+
+             seq_i = instr_seq[batch_idx]
+             seq_i = [self.tok.decode_sentence(seq_i,break_on_eos=True,join=True)]
+             bscore_ls = get_bscore(pred_i,seq_i)
+
+             bleus.append(bscore_ls[-1])
+
+
+             for i in range(len(pred_i)):
+                 G = 0
+                 for j in range(len(pred_i)-i-1,len(pred_i)):
+                     if j > 0:
+                         t = j - (len(pred_i)-i-1)
+                         G += (bscore_ls[j]-bscore_ls[j-1])*np.power(lamda,t)
+                     else:
+                         G += bscore_ls[j]
+                 lossRL2 += - G.cuda() * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
+
+
         #######################################################################################################
 # =============================================================================
 #         npy = np.load('VLN_training_nobackprop.npy')
@@ -361,54 +359,54 @@ class Seq2SeqSpeaker(object):
 #         npy = np.append(npy,bleu_avg)
 #         #np.save('BLEU_training.npy',npy)
 #         with open('VLN_training_nobackprop.npy', 'wb') as f:
-# 
+#
 #             np.save(f, npy)
 # =============================================================================
         #print(lossRL, loss)
-        #loss = 0.5 * lossRL + 0.5 * loss   
-        loss = lossRL
+        #loss = 0.5 * lossRL + 0.5 * loss
+        loss = lossRL + lossRL2
         for item in outputs:
             item['words'] = self.env.tokenizer.decode_sentence(item['word_indices'], break_on_eos=True, join=False)
 
         return outputs, loss
-    
-    
+
+
     def generate(self, path_obs, path_actions, encoded_instructions = [0]):
-        
+
         start_obs, batched_image_features, batched_action_embeddings, path_mask, \
         path_lengths, encoded_instructions, perm_indices = \
         self._batch_observations_and_actions(
             path_obs, path_actions, encoded_instructions)
-        
+
         batch_size = 1
         batched_action_embeddings = batched_action_embeddings
         batched_image_features = batched_image_features
         ctx,h_t,c_t = self.encoder(batched_action_embeddings, batched_image_features)
         w_t = try_cuda(Variable(torch.from_numpy(np.full((batch_size,), vocab_bos_idx, dtype='int64')).long(),
                                 requires_grad=False))
-        
+
         ended = np.array([False] * batch_size)
         word_indices = []
         #print(w_t.size(),h_t.size(),c_t.size(),ctx.size(),path_mask.size())
         for t in range(self.instruction_len):
             h_t,c_t,alpha,logit = self.decoder(w_t, h_t, c_t, ctx, path_mask)
-            
+
             #_,w_t = logit.max(1)        # student forcing - argmax
             #w_t = w_t.detach()
             probs = F.softmax(logit, dim = 1)    # sampling an action from model
             m = D.Categorical(probs)
             w_t = m.sample()
-            
+
             word_idx = w_t[0].item()
             print(word_idx)
             word_indices.append(word_idx)
             if ended.all():
                 break
-            
+
         decoded_words = self.tokenizer.decode_sentence(word_indices, break_on_eos=True, join=False)
-        
+
         return decoded_words
-    
+
     def rollout(self, load_next_minibatch=True):
         path_obs, path_actions, encoded_instructions = self.env.gold_obs_actions_and_instructions(self.max_episode_len, load_next_minibatch=load_next_minibatch)
         outputs, loss = self._score_obs_actions_and_instructions(path_obs, path_actions, encoded_instructions, self.feedback)
