@@ -409,7 +409,7 @@ class Seq2SeqSpeaker(object):
         return outputs, loss
     
     
-    def speak(self, path_obs, path_actions, vocab, encoded_instructions = [0]):
+    def speak(self, path_obs, path_actions, encoded_instructions = [0]):
         
         start_obs, batched_image_features, batched_action_embeddings, path_mask, \
         path_lengths, encoded_instructions, perm_indices = \
