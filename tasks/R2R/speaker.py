@@ -246,7 +246,7 @@ class Seq2SeqSpeaker(object):
         #follower will be loaded in advance
 
 
-         for batch_idx in range(batch_size):
+        for batch_idx in range(batch_size):
 
              #print('{}/{}'.format(batch_idx,batch_size))
              pred_i = instr_pred[batch_idx]
@@ -311,15 +311,15 @@ class Seq2SeqSpeaker(object):
          #vocab = read_vocab(TRAIN_VOCAB)
          #tok = Tokenizer(vocab=vocab)
 
-         lossRL2 = 0
-         def get_instr_list(ls):
+        lossRL2 = 0
+        def get_instr_list(ls):
              ls_ls=[]
              for i in range(len(ls)):
                  ls_ls.append([self.tok.decode_sentence(ls[:i+1],break_on_eos=True,join=True)])
 
              return ls_ls
 
-         def get_bscore(ls,ref):
+        def get_bscore(ls,ref):
              ls_ls = get_instr_list(ls)
              bscore_ls = []
              for cand in ls_ls:
@@ -327,8 +327,8 @@ class Seq2SeqSpeaker(object):
                  bscore_ls.append(F1)
              return bscore_ls
 
-         lamda = 0.95
-         for batch_idx in range(batch_size):
+        lamda = 0.95
+        for batch_idx in range(batch_size):
              #print(batch_idx)
              pred_i = instr_pred[batch_idx]
              #pred_i = [tok.decode_sentence(pred_i,break_on_eos=True,join=True)]
