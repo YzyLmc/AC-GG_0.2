@@ -364,7 +364,7 @@ class Seq2SeqSpeaker(object):
 # =============================================================================
         #print(lossRL, loss)
         #loss = 0.5 * lossRL + 0.5 * loss
-        loss = lossRL + lossRL2
+        loss = 0.5*lossRL + 1.5* lossRL2
         for item in outputs:
             item['words'] = self.env.tokenizer.decode_sentence(item['word_indices'], break_on_eos=True, join=False)
 
@@ -411,7 +411,7 @@ class Seq2SeqSpeaker(object):
         path_obs, path_actions, encoded_instructions = self.env.gold_obs_actions_and_instructions(self.max_episode_len, load_next_minibatch=load_next_minibatch)
         outputs, loss = self._score_obs_actions_and_instructions(path_obs, path_actions, encoded_instructions, self.feedback)
         self.loss = loss
-        #self.losses.append(loss.item())
+        self.losses.append(loss.item())
         return outputs
 
     def beam_search(self, beam_size, path_obs, path_actions):
