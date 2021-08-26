@@ -119,7 +119,7 @@ def load_nav_graphs(scans):
 
     graphs = {}
     for scan in scans:
-        with open('connectivity/%s_connectivity.json' % scan) as f:
+        with open('../../connectivity/%s_connectivity.json' % scan) as f:
             G = nx.Graph()
             positions = {}
             data = json.load(f)
@@ -153,15 +153,17 @@ def _load_nav_graphs(scans):
 
 if __name__ == '__main__':
     # Load json
-    with open('tasks/R2R/data/R2R_train_aug.json') as f:
-        data = json.load(f)
+    with open('R2R_train_aug.json') as f:
+        data = json.load(f)[:500]
 
-    # Load connectiviy graph
-    scans = []
-    for traj in data:
-        if traj['scan'] not in scans:
-            scans.append(traj['scan'])
-
+# =============================================================================
+#     # Load connectiviy graph
+#     scans = []
+#     for traj in data:
+#         if traj['scan'] not in scans:
+#             scans.append(traj['scan'])
+# =============================================================================
+    scans = ['5q7pvUzZiYa']
     graphs = load_nav_graphs(scans)
     DTWs = {}
     for scan in scans:
@@ -171,10 +173,13 @@ if __name__ == '__main__':
 
     for i in range(len(data)):
         scan = data[i]['scan']
-        path_gt = data[i]['path']
-        viewpoint_st = path_gt[0]
-        viewpoint_end = path_gt[-1]
-        graph_i = graph[scan]
-        all_path = nx.all_simple_paths(graph_i, source=viewpoint_st, target=viewpoint_end)
-        for path in all_path:
-            dtw_score = DTWs[scan](path, path_gt)
+        if scan == scans[0]:
+            path_gt = data[i]['path']
+            viewpoint_st = path_gt[0]
+            viewpoint_end = path_gt[-1]
+            graph_i = graphs[scan]
+            length = len(path_gt)
+            all_path = nx.all_simple_paths(graph_i, source=viewpoint_st, target=viewpoint_end,cutoff=length + 5)
+            for path in all_path:
+                dtw_score = DTWs[scan](path, path_gt)
+                print(scan,[path_gt,path],dtw_score)
