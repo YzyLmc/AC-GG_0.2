@@ -95,7 +95,7 @@ while len(viewpoint) < perturb_num:
             viewpoint.append(pairs_idx.pop(i))
             break
     
-    if len(viewpoint)//10 == 0:
+    if len(viewpoint)%10 == 0:
         print(len(viewpoint))
         
 
