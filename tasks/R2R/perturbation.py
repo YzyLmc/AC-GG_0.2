@@ -78,7 +78,8 @@ for scan in scans:
     DTWs[scan] = DTW(graph_i) 
      
 viewpoint = []
-while len(viewpoint) < perturb_num:
+traj_viewpoint = []
+while len(viewpoint) < 2*perturb_num:
     i = np.random.randint(len(pairs_idx))
     t_i = pairs_idx[i]
     data_i = data[t_i[0]]
@@ -93,10 +94,14 @@ while len(viewpoint) < perturb_num:
         dtw_score = DTWs[scan_i](path_simple, path_i)
         if dtw_score < upper and dtw_score > lower:
             viewpoint.append(pairs_idx.pop(i))
+            traj_viewpoint.append(path_simple)
             break
     
     if len(viewpoint)//10 == 0:
         print(len(viewpoint))
+
+with open('traj_viewpoint.json','w') as f:
+    json.dump(traj_viewpoint,f)
         
 
 #%%
@@ -114,7 +119,9 @@ partitions['direction'] = direct
 with open('parted_idx.json','w') as f:
     json.dump(partitions,f)
 #%%
-    
+with open('parted_idx.json','r') as f:
+    partitions = json.load(f)
+#%%
 hardNeg = []
 gt = {}
 
