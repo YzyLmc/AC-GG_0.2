@@ -97,7 +97,7 @@ while len(viewpoint) < 2*perturb_num:
             traj_viewpoint.append(path_simple)
             break
     
-    if len(viewpoint)//10 == 0:
+    if len(viewpoint)%10 == 0:
         print(len(viewpoint))
 
 with open('traj_viewpoint.json','w') as f:
