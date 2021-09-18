@@ -37,8 +37,84 @@ def make_image_attention_layers(args, image_features_list, hidden_size):
     attention_mechs = [
         try_cuda(mech) if mech else mech for mech in attention_mechs]
     return attention_mechs
-
-
+### dot cosine similarity for compatibility model
+class dotSimilarity(nn.module):
+    def __init__(self, batch_size, hidden_size, tao = 2, beta = 1):
+        
+        super(dotSimilarity, self).__init__()
+        self.batch_size = batch_size
+        self.tao = tao
+        self.beta = beta
+        self.embedding_size = hidden_size
+        self.linear = nn.linear(1,1)
+        self.cosine = F.cosine_similarity
+        self.temp = nn.Parameter(torch.ones(1))
+        self.sigmoid = nn.Sigmoid()
+        self.BCELoss = nn.BCELoss()
+        
+    def forward(self, vis_vec, lan_vec, M): # vis_vec and lan_vec both batch_size x hidden_size
+                                            # M is the perturbation indicator 1 X batch_size
+        
+        comp_matrix = torch.zeros(self.batch_size, self.batch_size)
+        label_matrix = torch.zeros(self.batch_size, self.batch_size)
+        
+        for i in range(len(M)): # 1 = match, 0 = perturbated or not a match
+            if M[i] == 1:
+                label_matrix[i,i] = 1
+                
+        for i in range(comp_matrix.size(0)): # iterate over the batch to form a matrix S_i,j
+            vis_i = vis_vec[i]
+            for j in range(comp_matrix.size(1)):
+                lan_j = lan_vec[j]
+                
+                S_ij = self.cosine(vis_i, lan_j)
+                comp_matrix[i,j] = S_ij
+        
+        # matrix is done, we then calculate losses
+        
+        # focal loss first
+        def focalLoss(compact_matrix, label_matrix):
+            prob_matrix = torch.zeros(compact_matrix.size(0), compact_matrix.size(1))
+            
+            for i in range(prob_matrix.size(0)):
+                
+                s_ii = prob_matrix[i][i]
+                s_ii2 = self.linear(s_ii)
+                p_ii = self.sigmoid(s_ii2)
+                
+                prob_matrix[i,i] = p_ii
+                    
+            f_loss = torch.pow(1-prob_matrix.detach(), self.tao) \
+                * self.BCELoss(prob_matrix, label_matrix)
+            
+            return f_loss
+        
+        # contrastive loss 
+        def contrastiveLoss(compact_matrix, label_matrix):
+            
+            compact_matrix_t = compact_matrix.transpose(0,1)
+            c_loss = 0        
+            for i in range(compact_matrix.size(0)):
+                if label_matrix[i,i] == 1:
+                    c_loss += -F.log_softmax(compact_matrix[i]/self.temp)
+                    c_loss += -F.log_softmax(compact_matrix_t[i]/self.temp)
+            
+            c_loss = c_loss/sum(label_matrix)
+            
+            return c_loss
+        
+        f_loss = focalLoss(comp_matrix, label_matrix)
+        c_loss = contrastiveLoss(comp_matrix, label_matrix)
+        
+        loss = c_loss + (self.beta/sum(M)) * f_loss
+        
+        return comp_matrix, loss
+                    
+                
+                
+                
+        
+        
 # TODO: try variational dropout (or zoneout?)
 class EncoderLSTM(nn.Module):
     ''' Encodes navigation instructions, returning hidden state context (for
