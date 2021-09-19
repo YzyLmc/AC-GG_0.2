@@ -793,6 +793,8 @@ class R2RBatch():
                     ob['instr_encoding'] = item['instr_encoding']
                 if 'instr_length' in item:
                     ob['instr_length'] = item['instr_length']
+                if 'label' in item: # for compatibility model training
+                    ob['label'] = item['label']
                 obs_batch.append(ob)
             if beamed:
                 obs.append(obs_batch)

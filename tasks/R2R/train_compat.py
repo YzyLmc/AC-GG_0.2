@@ -9,7 +9,9 @@ Created on Sat Sep 18 01:30:42 2021
 
 import torch
 from torch import optim
+import json
 
+import random
 import os
 import os.path
 import time
@@ -53,6 +55,12 @@ save_every = 100
 vocab = read_vocab(TRAIN_VOCAB)
 tok = Tokenizer(vocab=vocab)
 
+# load hard negatives
+with open('tasks/R2R/hardNeg_train.json','r') as f:
+    hardNeg = json.load(f)
+for item in hardNeg:
+    instr = item['instructions']
+    item['instr_encoding'], item['instr_length'] = tok.encode_sentence(instr)
 
 def get_model_prefix(args, image_feature_list):
     image_feature_name = "+".join(
@@ -83,7 +91,10 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
     tok = Tokenizer(vocab=vocab)
     train_env = R2RBatch(image_features_list, batch_size=batch_size,
                          splits=train_splits, tokenizer=tok)
-
+    
+    train_env.data.extend(hardNeg) # extend train data and shuffle
+    random.shuffle(train.data)
+    
     enc_hidden_size = hidden_size//2 if bidirectional else hidden_size
     glove = np.load(glove_path)
     feature_size = FEATURE_SIZE

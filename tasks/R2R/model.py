@@ -38,7 +38,7 @@ def make_image_attention_layers(args, image_features_list, hidden_size):
         try_cuda(mech) if mech else mech for mech in attention_mechs]
     return attention_mechs
 ### dot cosine similarity for compatibility model
-class dotSimilarity(nn.module):
+class dotSimilarity(nn.Module):
     def __init__(self, batch_size, hidden_size, tao = 2, beta = 1):
         
         super(dotSimilarity, self).__init__()

@@ -159,7 +159,7 @@ class compatModel():
             m = torch.ones(batch_size)
             for i in range(batch_size):
                 ob = start_obs[i]
-                if '_0' in ob['path_id']:
+                if 'label' in ob:
                     m[i] = 0
                     
             comp_matrix, loss = self.dotSim(h_t_vis, h_t_lan,m)
