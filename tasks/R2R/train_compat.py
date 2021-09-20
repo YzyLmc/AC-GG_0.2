@@ -44,7 +44,7 @@ hidden_size = 512
 bidirectional = False
 dropout_ratio = 0.5
 feedback_method = 'sample'  # teacher or sample
-learning_rate = 0.000001 #original learning rate 0.0001
+learning_rate = 0.00001 #original learning rate 0.0001
 #learning_rate = 0.005 #Bertscore LR
 weight_decay = 0.0005
 FEATURE_SIZE = 2048+128
@@ -93,17 +93,17 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
                          splits=train_splits, tokenizer=tok)
     
     train_env.data.extend(hardNeg) # extend train data and shuffle
-    random.shuffle(train.data)
+    random.shuffle(train_env.data)
     
     enc_hidden_size = hidden_size//2 if bidirectional else hidden_size
     glove = np.load(glove_path)
     feature_size = FEATURE_SIZE
     
-    lanEncoder = try_cuda(SpeakerEncoderLSTM(
+    visEncoder = try_cuda(SpeakerEncoderLSTM(
         action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
         bidirectional=bidirectional))
     
-    visEncoder = try_cuda(EncoderLSTM(
+    lanEncoder = try_cuda(EncoderLSTM(
         len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
         dropout_ratio, bidirectional=args.bidirectional, glove=glove))
     
@@ -120,7 +120,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
     return train_env, test_envs, visEncoder, lanEncoder, dotSim
 
 def train_setup(args):
-    train_splits = ['train']
+    train_splits = ['train_aug']
     # val_splits = ['train_subset', 'val_seen', 'val_unseen']
     val_splits = ['val_seen', 'val_unseen']
     vocab = TRAIN_VOCAB
@@ -150,11 +150,14 @@ def train(args, train_env, agent, log_every=log_every, val_envs=None):
         val_envs = {}
 
     print('Training with %s feedback' % feedback_method)
-    encoder_optimizer = optim.Adam(
-        filter_param(agent.encoder.parameters()), lr=learning_rate,
+    visEncoder_optimizer = optim.Adam(
+        filter_param(agent.visEncoder.parameters()), lr=learning_rate,
         weight_decay=weight_decay)
-    decoder_optimizer = optim.Adam(
-        filter_param(agent.decoder.parameters()), lr=learning_rate,
+    lanEncoder_optimizer = optim.Adam(
+        filter_param(agent.lanEncoder.parameters()), lr=learning_rate,
+        weight_decay=weight_decay)
+    dotSim_optimizer = optim.Adam(
+        filter_param(agent.dotSim.parameters()), lr=learning_rate,
         weight_decay=weight_decay)
 
     data_log = defaultdict(list)
@@ -178,8 +181,8 @@ def train(args, train_env, agent, log_every=log_every, val_envs=None):
         data_log['iteration'].append(iter)
 
         # Train for log_every interval
-        agent.train(encoder_optimizer, decoder_optimizer, interval,
-                    feedback=feedback_method)
+        agent.train(visEncoder_optimizer, lanEncoder_optimizer, dotSim_optimizer, interval
+                    )
         train_losses = np.array(agent.losses)
         assert len(train_losses) == interval
         train_loss_avg = np.average(train_losses)
@@ -201,6 +204,7 @@ def make_arg_parser():
     parser.add_argument(
         "--use_train_subset", action='store_true',
         help="use a subset of the original train data for validation")
+    parser.add_argument("--bidirectional", action='store_true')
     parser.add_argument("--n_iters", type=int, default=2000)
     parser.add_argument("--no_save", action='store_true')
     parser.add_argument("--result_dir", default=RESULT_DIR)

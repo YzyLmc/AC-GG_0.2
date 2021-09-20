@@ -60,7 +60,7 @@ def batch_instructions_from_encoded(encoded_instructions, max_length, reverse=Fa
 
 class compatModel():
     
-    def __init__(self, env, results_path, visEncoder, lanEncoder, dotSimModel):
+    def __init__(self, env, results_path, visEncoder, lanEncoder, dotSimModel, max_episode_len=10, instruction_len = 60):
         self.env = env
         self.results_path = results_path
         random.seed(1)
@@ -70,6 +70,8 @@ class compatModel():
         self.visEncoder = visEncoder
         self.lanEncoder = lanEncoder
         self.dotSim = dotSimModel
+        self.max_episode_len = max_episode_len
+        self.instruction_len = instruction_len
         
         self.losses = []     
         
@@ -140,7 +142,7 @@ class compatModel():
                encoded_instructions, \
                list(perm_indices)
                
-    def _score_obs_actions_and_instructions(self, path_obs, path_actions, encoded_instructions, feedback):
+    def _score_obs_actions_and_instructions(self, path_obs, path_actions, encoded_instructions):
             assert len(path_obs) == len(path_actions)
             assert len(path_obs) == len(encoded_instructions)
             start_obs, batched_image_features, batched_action_embeddings, path_mask, \
@@ -169,20 +171,36 @@ class compatModel():
                 
             outputs = {'label':m,
                        'predict':probs}
+            
+            success = 0
+            for i in range(batch_size):
+                if m[i] == 1:
+                    if probs[i] > 0.5:
+                        success += 1
+                elif m[i] == 0:
+                    if probs[i] < 0.5:
+                        success += 1
+            accuracy = success/batch_size
+            
+            npy_suc = np.load('compat_suc.npy')
+            npy_suc = np.append(npy_suc,accuracy)
+            with open('compat_suc.npy', 'wb') as f:
+                np.save(f, npy_suc)              
+            
             return outputs, loss
         
     def rollout(self, load_next_minibatch=True):
         path_obs, path_actions, encoded_instructions = self.env.gold_obs_actions_and_instructions(self.max_episode_len, load_next_minibatch=load_next_minibatch)
-        outputs, loss = self._score_obs_actions_and_instructions(path_obs, path_actions, encoded_instructions, self.feedback)
+        outputs, loss = self._score_obs_actions_and_instructions(path_obs, path_actions, encoded_instructions)
         
         self.loss = loss
-        #self.losses.append(loss.item())
+        self.losses.append(loss.item())
         return outputs
     
     def train(self, visEncoder_optimizer, lanEncoder_optimizer, dotSim_optimizer, n_iters):
         ''' Train for a given number of iterations '''
         self.visEncoder.train()
-        self.lanEecoder.train()
+        self.lanEncoder.train()
         self.losses = []
         it = range(1, n_iters + 1)
         try:
@@ -260,14 +278,14 @@ class compatModel():
         visEncoder_path, lanEncoder_path, dotSim_path = self._encoder_and_decoder_paths(path)
         torch.save(self.visEncoder.state_dict(), visEncoder_path)
         torch.save(self.lanEncoder.state_dict(), lanEncoder_path)
-        torch.save(self.dotSimModel.state_dict(), dotSim_path)
+        torch.save(self.dotSim.state_dict(), dotSim_path)
 
     def load(self, path, **kwargs):
         ''' Loads parameters (but not training state) '''
         visEncoder_path, lanEncoder_path, dotSim_path = self._encoder_and_decoder_paths(path)
         self.visEncoder.load_state_dict(torch.load(visEncoder_path, **kwargs))
         self.lanEncoder.load_state_dict(torch.load(lanEncoder_path, **kwargs))
-        self.dotSimModel.load_state_dict(torch.load(dotSim_path, **kwargs))
+        self.dotSim.load_state_dict(torch.load(dotSim_path, **kwargs))
         print('loaded pretrained model under',path)
             
             

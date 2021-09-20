@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+import numpy as np
 
 from utils import try_cuda
 
@@ -46,8 +47,8 @@ class dotSimilarity(nn.Module):
         self.tao = tao
         self.beta = beta
         self.embedding_size = hidden_size
-        self.linear = nn.linear(1,1)
-        self.cosine = F.cosine_similarity
+        self.linear = nn.Linear(1,1)
+        self.cosine = nn.CosineSimilarity(dim=0, eps=1e-6)
         self.temp = nn.Parameter(torch.ones(1))
         self.sigmoid = nn.Sigmoid()
         self.BCELoss = nn.BCELoss()
@@ -55,12 +56,14 @@ class dotSimilarity(nn.Module):
     def forward(self, vis_vec, lan_vec, M): # vis_vec and lan_vec both batch_size x hidden_size
                                             # M is the perturbation indicator 1 X batch_size
         
-        comp_matrix = torch.zeros(self.batch_size, self.batch_size)
-        label_matrix = torch.zeros(self.batch_size, self.batch_size)
-        
-        for i in range(len(M)): # 1 = match, 0 = perturbated or not a match
-            if M[i] == 1:
-                label_matrix[i,i] = 1
+        comp_matrix = torch.zeros(self.batch_size, self.batch_size).cuda()
+# =============================================================================
+#         label_matrix = torch.zeros(self.batch_size, self.batch_size).cuda()
+#         
+#         for i in range(len(M)): # 1 = match, 0 = perturbated or not a match
+#             if M[i] == 1:
+#                 label_matrix[i,i] = 1
+# =============================================================================
                 
         for i in range(comp_matrix.size(0)): # iterate over the batch to form a matrix S_i,j
             vis_i = vis_vec[i]
@@ -73,41 +76,57 @@ class dotSimilarity(nn.Module):
         # matrix is done, we then calculate losses
         
         # focal loss first
-        def focalLoss(compact_matrix, label_matrix):
-            prob_matrix = torch.zeros(compact_matrix.size(0), compact_matrix.size(1))
+        def focalLoss(compat_matrix, M):
             
-            for i in range(prob_matrix.size(0)):
+            f_loss = 0
+            for i in range(compat_matrix.size(0)):
                 
-                s_ii = prob_matrix[i][i]
-                s_ii2 = self.linear(s_ii)
+                s_ii = compat_matrix[i][i]
+                
+                s_ii2 = self.linear(s_ii.unsqueeze(0).cuda())
                 p_ii = self.sigmoid(s_ii2)
                 
-                prob_matrix[i,i] = p_ii
-                    
-            f_loss = torch.pow(1-prob_matrix.detach(), self.tao) \
-                * self.BCELoss(prob_matrix, label_matrix)
+                prob = p_ii.detach()
+                if prob < 0.5:
+                    prob = 1-prob
+                f_loss += torch.pow(1 - prob, self.tao) \
+                    * self.BCELoss(p_ii, M[i].unsqueeze(0).cuda())
             
             return f_loss
         
         # contrastive loss 
-        def contrastiveLoss(compact_matrix, label_matrix):
+        def contrastiveLoss(compat_matrix, M):
+            if sum(M) == 0:
+                return 0
             
-            compact_matrix_t = compact_matrix.transpose(0,1)
+            compat_matrix_t = compat_matrix.transpose(0,1)
             c_loss = 0        
-            for i in range(compact_matrix.size(0)):
-                if label_matrix[i,i] == 1:
-                    c_loss += -F.log_softmax(compact_matrix[i]/self.temp)
-                    c_loss += -F.log_softmax(compact_matrix_t[i]/self.temp)
+            for i in range(compat_matrix.size(0)):
+                if M[i] == 1:
+                    c_loss += -F.log_softmax(compat_matrix[i]/self.temp, dim = 0)[i]
+                    c_loss += -F.log_softmax(compat_matrix_t[i]/self.temp, dim = 0)[i]
             
-            c_loss = c_loss/sum(label_matrix)
+            c_loss = c_loss/sum(M)
             
             return c_loss
         
-        f_loss = focalLoss(comp_matrix, label_matrix)
-        c_loss = contrastiveLoss(comp_matrix, label_matrix)
+        f_loss = (self.beta/len(M)) * focalLoss(comp_matrix, M)
+        c_loss = contrastiveLoss(comp_matrix, M)
         
-        loss = c_loss + (self.beta/sum(M)) * f_loss
+        loss = c_loss + f_loss
+        #print(f_loss, c_loss, M)
         
+        npy_f = np.load('compat_f_loss.npy')
+        npy_f = np.append(npy_f,f_loss.cpu().detach().numpy())
+        
+        npy_c = np.load('compat_c_loss.npy')
+        npy_c = np.append(npy_c,c_loss.cpu().detach().numpy())
+        
+        with open('compat_f_loss.npy', 'wb') as f:
+            np.save(f, npy_f)        
+        with open('compat_c_loss.npy', 'wb') as f:
+            np.save(f, npy_c)        
+            
         return comp_matrix, loss
                     
                 
@@ -162,7 +181,7 @@ class EncoderLSTM(nn.Module):
         if not self.use_glove:
             embeds = self.drop(embeds)
         h0, c0 = self.init_state(batch_size)
-        packed_embeds = pack_padded_sequence(embeds, lengths, batch_first=True)
+        packed_embeds = pack_padded_sequence(embeds, lengths, batch_first=True, enforce_sorted=False) ## enforce_sorted = False to sidestep sorted seq_legnths
         enc_h, (enc_h_t, enc_c_t) = self.lstm(packed_embeds, (h0, c0))
 
         if self.num_directions == 2:
