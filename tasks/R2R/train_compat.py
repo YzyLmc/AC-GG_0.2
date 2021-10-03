@@ -57,8 +57,19 @@ tok = Tokenizer(vocab=vocab)
 
 # load hard negatives
 with open('tasks/R2R/hardNeg_train.json','r') as f:
-    hardNeg = json.load(f)
-for item in hardNeg:
+    hardNeg_train = json.load(f)
+for item in hardNeg_train:
+    instr = item['instructions']
+    item['instr_encoding'], item['instr_length'] = tok.encode_sentence(instr)
+  
+with open('tasks/R2R/hardNeg_val_seen.json','r') as f:
+    hardNeg_val_seen = json.load(f)
+with open('tasks/R2R/hardNeg_val_unseen.json','r') as f:
+    hardNeg_val_unseen = json.load(f)
+for item in hardNeg_val_seen:
+    instr = item['instructions']
+    item['instr_encoding'], item['instr_length'] = tok.encode_sentence(instr)
+for item in hardNeg_val_unseen:
     instr = item['instructions']
     item['instr_encoding'], item['instr_length'] = tok.encode_sentence(instr)
 
@@ -92,7 +103,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
     train_env = R2RBatch(image_features_list, batch_size=batch_size,
                          splits=train_splits, tokenizer=tok)
     
-    train_env.data.extend(hardNeg) # extend train data and shuffle
+    train_env.data.extend(hardNeg_train) # extend train data and shuffle
     random.shuffle(train_env.data)
     
     enc_hidden_size = hidden_size//2 if bidirectional else hidden_size
@@ -116,6 +127,9 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
             eval_speaker.SpeakerEvaluation(
                 [split], instructions_per_path=test_instruction_limit))
     for split in test_splits}
+    
+    test_envs['val_seen'][0].data.extend(hardNeg_val_seen)
+    test_envs['val_unseen'][0].data.extend(hardNeg_val_unseen)
 
     return train_env, test_envs, visEncoder, lanEncoder, dotSim
 

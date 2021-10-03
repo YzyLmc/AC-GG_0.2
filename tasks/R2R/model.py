@@ -116,16 +116,18 @@ class dotSimilarity(nn.Module):
         loss = c_loss + f_loss
         #print(f_loss, c_loss, M)
         
-        npy_f = np.load('compat_f_loss.npy')
-        npy_f = np.append(npy_f,f_loss.cpu().detach().numpy())
-        
-        npy_c = np.load('compat_c_loss.npy')
-        npy_c = np.append(npy_c,c_loss.cpu().detach().numpy())
-        
-        with open('compat_f_loss.npy', 'wb') as f:
-            np.save(f, npy_f)        
-        with open('compat_c_loss.npy', 'wb') as f:
-            np.save(f, npy_c)        
+# =============================================================================
+#         npy_f = np.load('compat_f_loss.npy')
+#         npy_f = np.append(npy_f,f_loss.cpu().detach().numpy())
+#         
+#         npy_c = np.load('compat_c_loss.npy')
+#         npy_c = np.append(npy_c,c_loss.cpu().detach().numpy())
+#         
+#         with open('compat_f_loss.npy', 'wb') as f:
+#             np.save(f, npy_f)        
+#         with open('compat_c_loss.npy', 'wb') as f:
+#             np.save(f, npy_c)        
+# =============================================================================
             
         return comp_matrix, loss
                     

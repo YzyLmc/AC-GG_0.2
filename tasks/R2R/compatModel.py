@@ -162,15 +162,18 @@ class compatModel():
             for i in range(batch_size):
                 ob = start_obs[i]
                 if 'label' in ob:
-                    m[i] = 0
-                    
+                    m[i] = 0       
             comp_matrix, loss = self.dotSim(h_t_vis, h_t_lan,m)
             probs = torch.zeros(batch_size)
             for i in range(len(probs)):
                 probs[i] = comp_matrix[i,i]
-                
-            outputs = {'label':m,
-                       'predict':probs}
+            
+            outputs = []
+            for i in range(batch_size):
+                item = {'label':m[i],
+                       'predict':probs[i],
+                       'instr_id':start_obs[i]['instr_id'] + '_' + str(m[i])}
+                outputs.append(item)
             
             success = 0
             for i in range(batch_size):
@@ -201,6 +204,7 @@ class compatModel():
         ''' Train for a given number of iterations '''
         self.visEncoder.train()
         self.lanEncoder.train()
+        self.dotSim.train()
         self.losses = []
         it = range(1, n_iters + 1)
         try:
@@ -221,14 +225,16 @@ class compatModel():
     def test(self, use_dropout=False):
         ''' Evaluate once on each instruction in the current environment '''
         if use_dropout:
-            self.encoder.train()
-            self.decoder.train()
+            self.visEncoder.train()
+            self.lanEncoder.train()
+            self.dotSim.train()
         else:
-            self.encoder.eval()
-            self.decoder.eval()
+            self.visEncoder.eval()
+            self.lanEncoder.eval()
+            self.dotSim.eval()
         self.env.reset_epoch()
         self.losses = []
-        self.results = []
+        self.results = {}
 
 
         # We rely on env showing the entire batch before repeating anything
@@ -262,7 +268,7 @@ class compatModel():
                 if result['instr_id'] in self.results:
                     looped = True
                 else:
-                    self.results.append(result)
+                    self.results[result['instr_id']] = result
             if looped:
                 break
         # if self.feedback == 'argmax':
