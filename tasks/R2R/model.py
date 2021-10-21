@@ -91,6 +91,8 @@ class dotSimilarity(nn.Module):
                     prob = 1-prob
                 f_loss += torch.pow(1 - prob, self.tao) \
                     * self.BCELoss(p_ii, M[i].unsqueeze(0).cuda())
+                #f_loss = self.BCELoss(p_ii, M[i].unsqueeze(0).cuda())
+                #print(f_loss, p_ii, M[i].unsqueeze(0))
             
             return f_loss
         
@@ -113,21 +115,22 @@ class dotSimilarity(nn.Module):
         f_loss = (self.beta/len(M)) * focalLoss(comp_matrix, M)
         c_loss = contrastiveLoss(comp_matrix, M)
         
-        loss = c_loss + f_loss
+        #loss = c_loss + f_loss
+        loss = f_loss
         #print(f_loss, c_loss, M)
         
-# =============================================================================
-#         npy_f = np.load('compat_f_loss.npy')
-#         npy_f = np.append(npy_f,f_loss.cpu().detach().numpy())
-#         
-#         npy_c = np.load('compat_c_loss.npy')
-#         npy_c = np.append(npy_c,c_loss.cpu().detach().numpy())
-#         
-#         with open('compat_f_loss.npy', 'wb') as f:
-#             np.save(f, npy_f)        
-#         with open('compat_c_loss.npy', 'wb') as f:
-#             np.save(f, npy_c)        
-# =============================================================================
+        npy_f = np.load('compat_f_loss.npy')
+        npy_f = np.append(npy_f,f_loss.cpu().detach().numpy())
+        
+        npy_c = np.load('compat_c_loss.npy')
+        try:
+            npy_c = np.append(npy_c,c_loss.cpu().detach().numpy())
+        except:
+            npy_c = np.append(npy_c,c_loss)
+        with open('compat_f_loss.npy', 'wb') as f:
+            np.save(f, npy_f)        
+        with open('compat_c_loss.npy', 'wb') as f:
+            np.save(f, npy_c)        
             
         return comp_matrix, loss
                     
@@ -616,3 +619,136 @@ class SpeakerDecoderLSTM(nn.Module):
             h_tilde, alpha = self.attention_layer(h_1_drop, ctx, ctx_mask)
             logit = self.decoder2action(h_tilde)
         return h_1, c_1, alpha, logit
+    
+###############################################################################
+# compatbility models
+###############################################################################
+class CompatVisEncoderLSTM(nn.Module):
+    def __init__(self, action_embedding_size, world_embedding_size,
+                 hidden_size, dropout_ratio, bidirectional=False):
+        super(CompatVisEncoderLSTM, self).__init__()
+        assert not bidirectional, 'Bidirectional is not implemented yet'
+
+        self.action_embedding_size = action_embedding_size
+        self.word_embedding_size = world_embedding_size
+        self.hidden_size = hidden_size
+        self.drop = nn.Dropout(p=dropout_ratio)
+        self.linear = nn.Linear(3*action_embedding_size,
+                                action_embedding_size)
+        self.visual_attention_layer = VisualSoftDotAttention(
+            hidden_size, world_embedding_size)
+        self.lstm = nn.LSTMCell(
+            action_embedding_size*2, hidden_size)
+        self.encoder2decoder = nn.Linear(hidden_size, hidden_size)
+
+    def init_state(self, batch_size):
+        ''' Initialize to zero cell states and hidden states.'''
+        h0 = Variable(
+            torch.zeros(batch_size, self.hidden_size), requires_grad=False)
+        c0 = Variable(
+            torch.zeros(batch_size, self.hidden_size), requires_grad=False)
+        return try_cuda(h0), try_cuda(c0)
+
+    def _forward_one_step(self, h_0, c_0, action_embedding, world_state_embedding,
+                          prev_action_embedding, next_action_embedding):
+
+        attn_feature, _ = self.visual_attention_layer(h_0, world_state_embedding)
+        e_prev = action_embedding - prev_action_embedding
+        e_next = action_embedding - next_action_embedding
+        feature =   torch.cat((e_prev,e_next,attn_feature),1)     
+        #feature = self.drop(feature)
+        feature = self.linear(feature)
+        concat_input = torch.cat((action_embedding, feature), 1)
+        h_1, c_1 = self.lstm(concat_input, (h_0, c_0))
+        return h_1, c_1
+
+    def forward(self, batched_action_embeddings, world_state_embeddings):
+        ''' Expects action indices as (batch, seq_len). Also requires a
+            list of lengths for dynamic batching. '''
+        assert isinstance(batched_action_embeddings, list)
+        assert isinstance(world_state_embeddings, list)
+        assert len(batched_action_embeddings) == len(world_state_embeddings)
+        batch_size = world_state_embeddings[0].shape[0]
+
+        h, c = self.init_state(batch_size)
+        h_list = []
+        for t, (action_embedding, world_state_embedding) in enumerate(
+                zip(batched_action_embeddings, world_state_embeddings)):
+            try: prev_action_embedding = action_embedding[t-1]
+            except: prev_action_embedding = action_embedding[t]
+            try: next_action_embedding = action_embedding[t+1]
+            except: next_action_embedding = action_embedding[t]
+            h, c = self._forward_one_step(
+                h, c, action_embedding, world_state_embedding,
+                prev_action_embedding, next_action_embedding)
+            h_list.append(h)
+
+        decoder_init = nn.Tanh()(self.encoder2decoder(h))
+
+        ctx = torch.stack(h_list, dim=1)  # (batch, seq_len, hidden_size)
+        ctx = self.drop(ctx)
+        return ctx, decoder_init, c  # (batch, hidden_size)
+    
+class CompatLanEncoderLSTM(nn.Module):
+    ''' Encodes navigation instructions, returning hidden state context (for
+        attention methods) and a decoder initial state. '''
+
+    def __init__(self, vocab_size, embedding_size, hidden_size, padding_idx,
+                 dropout_ratio, bidirectional=False, num_layers=1, glove=None):
+        super(CompatLanEncoderLSTM, self).__init__()
+        self.embedding_size = embedding_size
+        self.hidden_size = hidden_size
+        self.drop = nn.Dropout(p=dropout_ratio)
+        self.num_directions = 2 if bidirectional else 1
+        self.num_layers = num_layers
+        self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx)
+        self.use_glove = glove is not None
+        if self.use_glove:
+            #print('Using GloVe embedding')
+            self.embedding.weight.data[...] = torch.from_numpy(glove)
+            self.embedding.weight.requires_grad = False
+        self.lstm = nn.LSTM(embedding_size, hidden_size, self.num_layers,
+                            batch_first=True, dropout=dropout_ratio,
+                            bidirectional=bidirectional)
+        
+        self.encoder2decoder = nn.Linear(hidden_size * self.num_directions,
+                                         hidden_size)
+
+    def init_state(self, batch_size):
+        ''' Initialize to zero cell states and hidden states.'''
+        h0 = Variable(torch.zeros(
+            self.num_layers * self.num_directions,
+            batch_size,
+            self.hidden_size
+        ), requires_grad=False)
+        c0 = Variable(torch.zeros(
+            self.num_layers * self.num_directions,
+            batch_size,
+            self.hidden_size
+        ), requires_grad=False)
+        return try_cuda(h0), try_cuda(c0)
+
+    def forward(self, inputs, lengths):
+        ''' Expects input vocab indices as (batch, seq_len). Also requires a
+            list of lengths for dynamic batching. '''
+        batch_size = inputs.size(0)
+        embeds = self.embedding(inputs)   # (batch, seq_len, embedding_size)
+        if not self.use_glove:
+            embeds = self.drop(embeds)
+        h0, c0 = self.init_state(batch_size)
+        packed_embeds = pack_padded_sequence(embeds, lengths, batch_first=True, enforce_sorted=False) ## enforce_sorted = False to sidestep sorted seq_legnths
+        enc_h, (enc_h_t, enc_c_t) = self.lstm(packed_embeds, (h0, c0))
+
+        if self.num_directions == 2:
+            h_t = torch.cat((enc_h_t[-1], enc_h_t[-2]), 1)
+            c_t = torch.cat((enc_c_t[-1], enc_c_t[-2]), 1)
+        else:
+            h_t = enc_h_t[-1]
+            c_t = enc_c_t[-1]  # (batch, hidden_size)
+
+        decoder_init = nn.Tanh()(self.encoder2decoder(h_t))
+
+        ctx, lengths = pad_packed_sequence(enc_h, batch_first=True)
+        ctx = self.drop(ctx)
+        # (batch, seq_len, hidden_size*num_directions), (batch, hidden_size)
+        return ctx, decoder_init, c_t

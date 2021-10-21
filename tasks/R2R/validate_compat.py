@@ -36,12 +36,16 @@ def validate_entry_point(args):
                     FN += 1
                 elif item['predict'] > 0.5:
                     TP += 1
-        accuracy = (TN + TP) / (TN + FN + TP + FP)  
-        precision = TP / (TP + FP)
-        recall = TP/ (TP + FN)
-        f1 = 2*TP / (2*TP + FP + FN)
+        try:
+            accuracy = (TN + TP) / (TN + FN + TP + FP)  
+            precision = TP / (TP + FP)
+            recall = TP/ (TP + FN)
+            f1 = 2*TP / (2*TP + FP + FN)
+            print("{} accuracy = {}, precision = {}, recall = {}, f1 = {}".format(env_name, accuracy, precision, recall, f1))
+        except:
+            print('division by zero')
         print('TN = {}, FN = {}, TP = {}, FP ={}'.format(TN,FN,TP,FP))
-        print("{} accuracy = {}, precision = {}, recall = {}, f1 = {}".format(env_name, accuracy, precision, recall, f1))
+        
 
 def make_arg_parser():
     parser = train_compat.make_arg_parser()

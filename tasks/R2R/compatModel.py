@@ -197,7 +197,12 @@ class compatModel():
         outputs, loss = self._score_obs_actions_and_instructions(path_obs, path_actions, encoded_instructions)
         
         self.loss = loss
-        self.losses.append(loss.item())
+        if type(loss) == int:
+            print(loss,outputs)
+        try:
+            self.losses.append(loss.item())
+        except:
+            self.losses.append(loss)
         return outputs
     
     def train(self, visEncoder_optimizer, lanEncoder_optimizer, dotSim_optimizer, n_iters):
@@ -217,7 +222,8 @@ class compatModel():
             lanEncoder_optimizer.zero_grad()
             dotSim_optimizer.zero_grad()
             self.rollout()
-            self.loss.backward()
+            if not self.loss == 0:
+                self.loss.backward()
             visEncoder_optimizer.step()
             lanEncoder_optimizer.step()
             dotSim_optimizer.step()

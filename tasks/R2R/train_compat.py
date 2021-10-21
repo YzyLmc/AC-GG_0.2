@@ -26,7 +26,7 @@ from env import R2RBatch, ImageFeatures
 import eval_speaker
 
 from vocab import SUBTRAIN_VOCAB, TRAIN_VOCAB, TRAINVAL_VOCAB
-from model import EncoderLSTM, SpeakerEncoderLSTM, dotSimilarity
+from model import CompatLanEncoderLSTM, CompatVisEncoderLSTM, dotSimilarity, EncoderLSTM,SpeakerEncoderLSTM
 from compatModel import compatModel
 
 RESULT_DIR = 'tasks/R2R/compat/results/'
@@ -35,7 +35,7 @@ PLOT_DIR = 'tasks/R2R/compat/plots/'
 
 MAX_INSTRUCTION_LENGTH = 80
 
-batch_size = 100
+batch_size = 10
 max_episode_len = 10
 word_embedding_size = 300
 glove_path = 'tasks/R2R/data/train_glove.npy'
@@ -44,11 +44,12 @@ hidden_size = 512
 bidirectional = False
 dropout_ratio = 0.5
 feedback_method = 'sample'  # teacher or sample
-learning_rate = 0.00001 #original learning rate 0.0001
+learning_rate = 0.0005 #original learning rate 0.0001
 #learning_rate = 0.005 #Bertscore LR
-weight_decay = 0.0005
+#weight_decay = 0.0005
+weight_decay = 0.0001
 FEATURE_SIZE = 2048+128
-n_iters = 2000
+n_iters = 10000
 log_every = 100
 save_every = 100
 
@@ -110,14 +111,22 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
     glove = np.load(glove_path)
     feature_size = FEATURE_SIZE
     
-    visEncoder = try_cuda(SpeakerEncoderLSTM(
+    visEncoder = try_cuda(CompatVisEncoderLSTM(
         action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
         bidirectional=bidirectional))
-    
+# =============================================================================
+#     visEncoder = try_cuda(SpeakerEncoderLSTM(
+#         action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
+#         bidirectional=bidirectional))    
+# =============================================================================
+# =============================================================================
+#     lanEncoder = try_cuda(CompatLanEncoderLSTM(
+#         len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
+#         dropout_ratio, bidirectional=True, glove=glove))
+# =============================================================================
     lanEncoder = try_cuda(EncoderLSTM(
         len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
-        dropout_ratio, bidirectional=args.bidirectional, glove=glove))
-    
+        dropout_ratio, bidirectional=False, glove=glove))
     dotSim = try_cuda(dotSimilarity(batch_size, enc_hidden_size))
     
     test_envs = {
@@ -128,15 +137,17 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
                 [split], instructions_per_path=test_instruction_limit))
     for split in test_splits}
     
-    test_envs['val_seen'][0].data.extend(hardNeg_val_seen)
+    #test_envs['val_seen'][0].data.extend(hardNeg_val_seen)
     test_envs['val_unseen'][0].data.extend(hardNeg_val_unseen)
-
+    test_envs['val_unseen'][0].data = test_envs['val_unseen'][0].data[:1000]
     return train_env, test_envs, visEncoder, lanEncoder, dotSim
 
 def train_setup(args):
     train_splits = ['train_aug']
+    #train_splits = ['val_seen']
     # val_splits = ['train_subset', 'val_seen', 'val_unseen']
-    val_splits = ['val_seen', 'val_unseen']
+    # val_splits = ['val_seen', 'val_unseen']
+    val_splits = ['val_unseen']
     vocab = TRAIN_VOCAB
 
     if args.use_train_subset:
@@ -219,7 +230,7 @@ def make_arg_parser():
         "--use_train_subset", action='store_true',
         help="use a subset of the original train data for validation")
     parser.add_argument("--bidirectional", action='store_true')
-    parser.add_argument("--n_iters", type=int, default=2000)
+    parser.add_argument("--n_iters", type=int, default=10000)
     parser.add_argument("--no_save", action='store_true')
     parser.add_argument("--result_dir", default=RESULT_DIR)
     parser.add_argument("--snapshot_dir", default=SNAPSHOT_DIR)
