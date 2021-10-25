@@ -109,14 +109,15 @@ class dotSimilarity(nn.Module):
                     c_loss += -F.log_softmax(compat_matrix_t[i]/self.temp, dim = 0)[i]
             
             c_loss = c_loss/sum(M)
-            
+            if c_loss < 0 :
+                print(compat_matrix, M)
             return c_loss
         
         f_loss = (self.beta/len(M)) * focalLoss(comp_matrix, M)
         c_loss = contrastiveLoss(comp_matrix, M)
         
         #loss = c_loss + f_loss
-        loss = f_loss
+        loss = c_loss
         #print(f_loss, c_loss, M)
         
         npy_f = np.load('compat_f_loss.npy')

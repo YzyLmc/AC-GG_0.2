@@ -44,12 +44,12 @@ hidden_size = 512
 bidirectional = False
 dropout_ratio = 0.5
 feedback_method = 'sample'  # teacher or sample
-learning_rate = 0.0005 #original learning rate 0.0001
+learning_rate = 0.00001 #original learning rate 0.0001
 #learning_rate = 0.005 #Bertscore LR
-#weight_decay = 0.0005
-weight_decay = 0.0001
+weight_decay = 0.00005
+#weight_decay = 0.0001
 FEATURE_SIZE = 2048+128
-n_iters = 10000
+n_iters = 5000
 log_every = 100
 save_every = 100
 
@@ -111,14 +111,14 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
     glove = np.load(glove_path)
     feature_size = FEATURE_SIZE
     
-    visEncoder = try_cuda(CompatVisEncoderLSTM(
-        action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
-        bidirectional=bidirectional))
 # =============================================================================
-#     visEncoder = try_cuda(SpeakerEncoderLSTM(
+#     visEncoder = try_cuda(CompatVisEncoderLSTM(
 #         action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
-#         bidirectional=bidirectional))    
+#         bidirectional=bidirectional))
 # =============================================================================
+    visEncoder = try_cuda(SpeakerEncoderLSTM(
+        action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
+        bidirectional=bidirectional))    
 # =============================================================================
 #     lanEncoder = try_cuda(CompatLanEncoderLSTM(
 #         len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
@@ -128,6 +128,8 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
         len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
         dropout_ratio, bidirectional=False, glove=glove))
     dotSim = try_cuda(dotSimilarity(batch_size, enc_hidden_size))
+    visEncoder.load_state_dict(torch.load('tasks/R2R/snapshots/release/speaker_final_release_enc'))
+    lanEncoder.load_state_dict(torch.load('tasks/R2R/snapshots/release/follower_final_release_enc'))
     
     test_envs = {
     split: (R2RBatch(image_features_list, batch_size=batch_size,
@@ -139,7 +141,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
     
     #test_envs['val_seen'][0].data.extend(hardNeg_val_seen)
     test_envs['val_unseen'][0].data.extend(hardNeg_val_unseen)
-    test_envs['val_unseen'][0].data = test_envs['val_unseen'][0].data[:1000]
+    test_envs['val_unseen'][0].data = test_envs['val_unseen'][0].data[-1000:-1]
     return train_env, test_envs, visEncoder, lanEncoder, dotSim
 
 def train_setup(args):
@@ -230,7 +232,7 @@ def make_arg_parser():
         "--use_train_subset", action='store_true',
         help="use a subset of the original train data for validation")
     parser.add_argument("--bidirectional", action='store_true')
-    parser.add_argument("--n_iters", type=int, default=10000)
+    parser.add_argument("--n_iters", type=int, default=2000)
     parser.add_argument("--no_save", action='store_true')
     parser.add_argument("--result_dir", default=RESULT_DIR)
     parser.add_argument("--snapshot_dir", default=SNAPSHOT_DIR)
