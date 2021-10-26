@@ -35,7 +35,7 @@ PLOT_DIR = 'tasks/R2R/compat/plots/'
 
 MAX_INSTRUCTION_LENGTH = 80
 
-batch_size = 10
+batch_size = 100
 max_episode_len = 10
 word_embedding_size = 300
 glove_path = 'tasks/R2R/data/train_glove.npy'
@@ -119,17 +119,17 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
     visEncoder = try_cuda(SpeakerEncoderLSTM(
         action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
         bidirectional=bidirectional))    
-# =============================================================================
-#     lanEncoder = try_cuda(CompatLanEncoderLSTM(
-#         len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
-#         dropout_ratio, bidirectional=True, glove=glove))
-# =============================================================================
-    lanEncoder = try_cuda(EncoderLSTM(
+    lanEncoder = try_cuda(CompatLanEncoderLSTM(
         len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
-        dropout_ratio, bidirectional=False, glove=glove))
+        dropout_ratio, bidirectional=True, glove=glove))
+# =============================================================================
+#     lanEncoder = try_cuda(EncoderLSTM(
+#         len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
+#         dropout_ratio, bidirectional=False, glove=glove))
+# =============================================================================
     dotSim = try_cuda(dotSimilarity(batch_size, enc_hidden_size))
-    visEncoder.load_state_dict(torch.load('tasks/R2R/snapshots/release/speaker_final_release_enc'))
-    lanEncoder.load_state_dict(torch.load('tasks/R2R/snapshots/release/follower_final_release_enc'))
+    #visEncoder.load_state_dict(torch.load('tasks/R2R/snapshots/release/speaker_final_release_enc'))
+    #lanEncoder.load_state_dict(torch.load('tasks/R2R/snapshots/release/follower_final_release_enc'))
     
     test_envs = {
     split: (R2RBatch(image_features_list, batch_size=batch_size,
@@ -141,7 +141,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
     
     #test_envs['val_seen'][0].data.extend(hardNeg_val_seen)
     test_envs['val_unseen'][0].data.extend(hardNeg_val_unseen)
-    test_envs['val_unseen'][0].data = test_envs['val_unseen'][0].data[-1000:-1]
+    test_envs['val_unseen'][0].data = test_envs['val_unseen'][0].data[3000:4000]
     return train_env, test_envs, visEncoder, lanEncoder, dotSim
 
 def train_setup(args):
