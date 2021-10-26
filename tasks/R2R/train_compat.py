@@ -119,14 +119,14 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
     visEncoder = try_cuda(SpeakerEncoderLSTM(
         action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
         bidirectional=bidirectional))    
-    lanEncoder = try_cuda(CompatLanEncoderLSTM(
-        len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
-        dropout_ratio, bidirectional=True, glove=glove))
 # =============================================================================
-#     lanEncoder = try_cuda(EncoderLSTM(
+#     lanEncoder = try_cuda(CompatLanEncoderLSTM(
 #         len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
-#         dropout_ratio, bidirectional=False, glove=glove))
+#         dropout_ratio, bidirectional=True, glove=glove))
 # =============================================================================
+    lanEncoder = try_cuda(EncoderLSTM(
+        len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
+        dropout_ratio, bidirectional=False, glove=glove))
     dotSim = try_cuda(dotSimilarity(batch_size, enc_hidden_size))
     #visEncoder.load_state_dict(torch.load('tasks/R2R/snapshots/release/speaker_final_release_enc'))
     #lanEncoder.load_state_dict(torch.load('tasks/R2R/snapshots/release/follower_final_release_enc'))
