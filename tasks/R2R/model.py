@@ -40,7 +40,7 @@ def make_image_attention_layers(args, image_features_list, hidden_size):
     return attention_mechs
 ### dot cosine similarity for compatibility model
 class dotSimilarity(nn.Module):
-    def __init__(self, batch_size, hidden_size, tao = 2, beta = 1):
+    def __init__(self, batch_size, hidden_size, tao = 2, beta = 100):
         
         super(dotSimilarity, self).__init__()
         self.batch_size = batch_size
@@ -116,8 +116,8 @@ class dotSimilarity(nn.Module):
         f_loss = (self.beta/len(M)) * focalLoss(comp_matrix, M)
         c_loss = contrastiveLoss(comp_matrix, M)
         
-        loss = c_loss + f_loss
-        #loss = c_loss
+        #loss = c_loss + f_loss
+        loss = f_loss
         #print(f_loss, c_loss, M)
         
         npy_f = np.load('compat_f_loss.npy')
@@ -134,6 +134,15 @@ class dotSimilarity(nn.Module):
             np.save(f, npy_c)        
             
         return comp_matrix, loss
+    
+    
+    def _instance_predict(self,vis_vec, lan_vec):
+        
+        s = self.cosine(vis_vec.view(-1), lan_vec.view(-1))
+        s2 = self.linear(s.cuda().view(1,-1))
+        prob = self.sigmoid(s2)
+        
+        return prob
                     
                 
                 
