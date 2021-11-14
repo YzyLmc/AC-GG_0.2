@@ -33,11 +33,12 @@ def batch_instructions_from_encoded(encoded_instructions, max_length, reverse=Fa
     seq_tensor = np.full((num_instructions, max_length), vocab_pad_idx)
     seq_lengths = []
     for i, inst in enumerate(encoded_instructions):
-        if len(inst) > 0:
-            assert inst[-1] != vocab_eos_idx
+        
+        #if len(inst) > 0:
+        #    assert inst[-1] != vocab_eos_idx
         if reverse:
             inst = inst[::-1]
-        inst = np.concatenate((inst, [vocab_eos_idx]))
+        inst = np.concatenate((inst.cpu(), [vocab_eos_idx]))
         inst = inst[:max_length]
         seq_tensor[i,:len(inst)] = inst
         seq_lengths.append(len(inst))
@@ -172,7 +173,7 @@ class compatModel():
             for i in range(batch_size):
                 item = {'label':m[i],
                        'predict':probs[i],
-                       'instr_id':start_obs[i]['instr_id'] + '_' + str(m[i])}
+                       'instr_id':start_obs[i]['instr_id'] + '_' + str(int(m[i]))}
                 outputs.append(item)
             
             success = 0
@@ -191,14 +192,29 @@ class compatModel():
                 np.save(f, npy_suc)              
             
             return outputs, loss
+    
+    def predict(self,path_obs, path_actions, encoded_instructions):
+        start_obs, batched_image_features, batched_action_embeddings, path_mask, \
+        path_lengths, encoded_instructions, perm_indices = \
+        self._batch_observations_and_actions(
+            path_obs, path_actions, encoded_instructions)
+
+        batched_action_embeddings = batched_action_embeddings
+        batched_image_features = batched_image_features
+        
+        instr_seq, instr_mask, instr_lengths = batch_instructions_from_encoded(encoded_instructions, self.instruction_len)
+        ctx_vis, h_t_vis, c_t_vis = self.visEncoder(batched_action_embeddings, batched_image_features)
+        ctx_lan, h_t_lan ,c_t_lan = self.lanEncoder(instr_seq, instr_lengths)
+        
+        prob = self.dotSim._instance_predict(h_t_vis, h_t_lan)
+        
+        return prob
         
     def rollout(self, load_next_minibatch=True):
         path_obs, path_actions, encoded_instructions = self.env.gold_obs_actions_and_instructions(self.max_episode_len, load_next_minibatch=load_next_minibatch)
         outputs, loss = self._score_obs_actions_and_instructions(path_obs, path_actions, encoded_instructions)
         
         self.loss = loss
-        if type(loss) == int:
-            print(loss,outputs)
         try:
             self.losses.append(loss.item())
         except:
@@ -272,6 +288,7 @@ class compatModel():
 
             for result in rollout_results:
                 if result['instr_id'] in self.results:
+                    print(result['instr_id'])
                     looped = True
                 else:
                     self.results[result['instr_id']] = result

@@ -181,7 +181,7 @@ agent = compatModel(None, "", visEncoder, lanEncoder, dotSim)
 agent.load('tasks/R2R/compat/trained_1/compat_sample_imagenet_mean_pooled_train_iter_1000', map_location = 'cpu')
 if __name__ == "__main__":
     traj = {'scan':'5q7pvUzZiYa', 'path':["7dc12a67ddfc4a4a849ce620db5b777b", "0e84cf4dec784bc28b78a80bee35c550", "a77784b955454209857d745976a1676d", "67971a17c26f4e2ca117b4fca73507fe", "8db06d3a0dd44508b3c078d60126ce19", "43ac37dfa1db4a13a8a9df4e454eb016", "4bd82c990a6548a994daa97c8f52db06", "6d11ca4d41e04bb1a725c2223c36b2aa", "29fb3c58b29348558d36a9f9440a1379", "c23f26401359426982d11ca494ee739b", "397403366d784caf804d741f32fd68b9", "3c6a35e15ada4b649990d6568cce8bd9", "55e4436f528c4bf09e4550079c572f7b", "69fad7dd177847dbabf69e8fb7c00ddf", "c629c7f1cf6f47a78c45a8ae9ff82247", "21fca0d6192940e580587fe317440f56", "4b85d61dd3a94e8a812affe78f3a322d", "3c025b8e3d2040969cd00dd0e9f29b09"][:2], 'heading':0.0,'elevation_init':0.0}
-    encoded_instructions, _ = tok.encode_sentence('Stop .')
+    encoded_instructions, _ = tok.encode_sentence('')
     encoded_instructions = torch.tensor([encoded_instructions], device = 'cpu')
     rdv_test = rdv(traj)
     

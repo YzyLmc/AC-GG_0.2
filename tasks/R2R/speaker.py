@@ -42,11 +42,12 @@ def backchain_inference_states(last_inference_state):
 class Seq2SeqSpeaker(object):
     feedback_options = ['teacher', 'argmax', 'sample']
 
-    def __init__(self, env, results_path, encoder, decoder, instruction_len, scorer=None, tokenizer=None, max_episode_len=10, follower = None):
+    def __init__(self, env, results_path, encoder, decoder, instruction_len, scorer=None, tokenizer=None, max_episode_len=10, follower = None, compat = None):
         self.env = env
         self.results_path = results_path
         random.seed(1)
         self.results = {}
+        self.stat = 'train'
         self.losses = [] # For learning agents
 
         self.encoder = encoder
@@ -68,6 +69,8 @@ class Seq2SeqSpeaker(object):
             self.tok = tokenizer
         if follower:
             self.agent = follower
+        if compat:
+            self.compat = compat
 
     def write_results(self):
         with open(self.results_path, 'w') as f:
@@ -141,7 +144,7 @@ class Seq2SeqSpeaker(object):
                encoded_instructions, \
                list(perm_indices)
 
-    def _score_obs_actions_and_instructions(self, path_obs, path_actions, encoded_instructions, feedback):
+    def _score_obs_actions_and_instructions(self, path_obs, path_actions, encoded_instructions, feedback, lamda = 0.95):
         assert len(path_obs) == len(path_actions)
         assert len(path_obs) == len(encoded_instructions)
         start_obs, batched_image_features, batched_action_embeddings, path_mask, \
@@ -221,6 +224,7 @@ class Seq2SeqSpeaker(object):
             # Early exit if all ended
             if ended.all():
                 break
+            
         output_soft = torch.cat(output_soft, 0)
         output_soft =output_soft.transpose(0,1)
         instr_pred = torch.cat(instr_pred, 0)
@@ -242,133 +246,170 @@ class Seq2SeqSpeaker(object):
         #print(instr_seq[0],instr_pred[0], BLEU([instr_seq[0]], instr_pred[0],weights=(1/3,1/3,1/3)))
         bleus = []
         lossRL = 0
-
+        
+        if not self.stat == 'test':
 # =============================================================================
-#         #####################################################################################
-#         ##########################bleu reward###############################################
-#                 #if pred_i[i] == vocab_eos_idx:
-#                 #    bleus.append(BLEU([seq_i],pred_i))
-#                 #    break
-#         #print(output_soft,output_soft.size(),instr_pred.size(),instr_seq.size())
-#         #print(sum(bleus)/len(bleus))
-#         for batch_idx in range(batch_size):
-#             #print(batch_idx)
-#             pred_i = instr_pred[batch_idx]
-#             seq_i = instr_seq[batch_idx]
-#             #print(seq_i, pred_i)
-#             bleus.append(BLEU([seq_i],pred_i))
-#             for i in range(len(pred_i)):
-#
-#                 G = 0
-#                 for j in range(len(pred_i)-i,len(pred_i)+1):
-#                     if j > 1:
-#                         G = G + BLEU([seq_i],pred_i[:j]) - BLEU([seq_i],pred_i[:j-1])
-#                     else:
-#                         G = G + BLEU([seq_i],pred_i[:j])
-#
-#                 lossRL += - G * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
+#             #####################################################################################
+#             ##########################bleu reward###############################################
+#             #print(output_soft,output_soft.size(),instr_pred.size(),instr_seq.size())
+#             #print(sum(bleus)/len(bleus))
+#             for batch_idx in range(batch_size):
+#                 #print(batch_idx)
+#                 pred_i = instr_pred[batch_idx]
+#                 seq_i = instr_seq[batch_idx]
+#                 #print(seq_i, pred_i)
+#                 bleus.append(BLEU([seq_i],pred_i))
+#                 for i in range(len(pred_i)):
+#     
+#                     G = 0
+#                     for j in range(len(pred_i)-i,len(pred_i)+1):
+#                         if j > 1:
+#                             G = G + BLEU([seq_i],pred_i[:j]) - BLEU([seq_i],pred_i[:j-1])
+#                         else:
+#                             G = G + BLEU([seq_i],pred_i[:j])
+#     
+#                     lossRL += - G * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
+#     
+#              #######################################################################################################
+#              ###########################Bertscore reward############################################################
+#              #vocab = read_vocab(TRAIN_VOCAB)
+#              #tok = Tokenizer(vocab=vocab)
+#     
+#             lossRL2 = 0
+#             def get_instr_list(ls):
+#                  ls_ls=[]
+#                  for i in range(len(ls)):
+#                      ls_ls.append([self.tok.decode_sentence(ls[:i+1],break_on_eos=True,join=True)])
+#     
+#                  return ls_ls
+#     
+#             def get_bscore(ls,ref):
+#                  ls_ls = get_instr_list(ls)
+#                  bscore_ls = []
+#                  for cand in ls_ls:
+#                      _, _, F1 = self.scorer.score(cand,[ref])
+#                      bscore_ls.append(F1)
+#                  return bscore_ls
+#     
+#             
+#             for batch_idx in range(batch_size):
+#                  #print(batch_idx)
+#                  pred_i = instr_pred[batch_idx]
+#                  #pred_i = [tok.decode_sentence(pred_i,break_on_eos=True,join=True)]
+#     
+#                  seq_i = instr_seq[batch_idx]
+#                  seq_i = [self.tok.decode_sentence(seq_i,break_on_eos=True,join=True)]
+#                  bscore_ls = get_bscore(pred_i,seq_i)
+#     
+#                  bleus.append(bscore_ls[-1])
+#     
+#     
+#                  for i in range(len(pred_i)):
+#                      G = 0
+#                      for j in range(len(pred_i)-i-1,len(pred_i)):
+#                          if j > 0:
+#                              t = j - (len(pred_i)-i-1)
+#                              G += (bscore_ls[j]-bscore_ls[j-1])*np.power(lamda,t)
+#                          else:
+#                              G += bscore_ls[j]
+#                      lossRL2 += - G.cuda() * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
+#     
+#     
 # =============================================================================
 # =============================================================================
-# 
-#          #######################################################################################################
-#          ###########################Bertscore reward############################################################
-#          #vocab = read_vocab(TRAIN_VOCAB)
-#          #tok = Tokenizer(vocab=vocab)
-# 
-#         lossRL2 = 0
-#         def get_instr_list(ls):
-#              ls_ls=[]
-#              for i in range(len(ls)):
-#                  ls_ls.append([self.tok.decode_sentence(ls[:i+1],break_on_eos=True,join=True)])
-# 
-#              return ls_ls
-# 
-#         def get_bscore(ls,ref):
-#              ls_ls = get_instr_list(ls)
-#              bscore_ls = []
-#              for cand in ls_ls:
-#                  _, _, F1 = self.scorer.score(cand,[ref])
-#                  bscore_ls.append(F1)
-#              return bscore_ls
-# 
-#         lamda = 0.95
-#         for batch_idx in range(batch_size):
-#              #print(batch_idx)
-#              pred_i = instr_pred[batch_idx]
-#              #pred_i = [tok.decode_sentence(pred_i,break_on_eos=True,join=True)]
-# 
-#              seq_i = instr_seq[batch_idx]
-#              seq_i = [self.tok.decode_sentence(seq_i,break_on_eos=True,join=True)]
-#              bscore_ls = get_bscore(pred_i,seq_i)
-# 
-#              bleus.append(bscore_ls[-1])
-# 
-# 
-#              for i in range(len(pred_i)):
-#                  G = 0
-#                  for j in range(len(pred_i)-i-1,len(pred_i)):
-#                      if j > 0:
-#                          t = j - (len(pred_i)-i-1)
-#                          G += (bscore_ls[j]-bscore_ls[j-1])*np.power(lamda,t)
+#             #####################distance as reward##################################
+#             #follower will be loaded in advance
+#     
+#     
+#             for batch_idx in range(batch_size):
+#     
+#                  #print('{}/{}'.format(batch_idx,batch_size))
+#                  pred_i = instr_pred[batch_idx]
+#                  if pred_i[-1] == 2:
+#                      pred_i = pred_i[:-1][::-1] + [2]
+#                  else: pred_i.reverse()
+#                  pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
+#                  location_end = path_obs[batch_idx][-1]['viewpoint'] # end point of the traj
+#                  location_start = path_obs[batch_idx][0]['viewpoint'] # start point of the traj
+#                  ob_1 = start_obs[batch_idx]
+#                  scanId = ob_1['scan']
+#                  viewpoint = ob_1['viewpoint']
+#                  elevation = ob_1['elevation']
+#                  heading = ob_1['heading']
+#     
+#                  #print(dist_i)
+#                  traj = self.agent.generate(self.sim, pred_i, scanId, viewpoint,heading,elevation)
+#                  end_pose_pred = traj['trajectory'][-1][0]
+#                  dist_i = self.env.distances[scanId][end_pose_pred][location_end] # distance towards goal
+#                  length_i = self.env.distances[scanId][location_start][location_end] # total length of the traj
+#                                                                                                      
+#                  
+#                  bonus = 3 if dist_i < 3 else 0
+#                  bleus.append(dist_i)
+#     
+#                  for i in range(len(pred_i)):
+#                      if i == 0:
+#                          G = - (dist_i - self.env.distances[scanId][viewpoint][location_end])/length_i + bonus
 #                      else:
-#                          G += bscore_ls[j]
-#                  lossRL2 += - G.cuda() * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
-# 
+#                          traj_j = self.agent.generate(self.sim, pred_i[:i], scanId, viewpoint,heading,elevation)
+#                          end_pose_j = traj_j['trajectory'][-1][0]
+#                          G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end])/length_i + bonus
+#     
+#     
+#                      lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
+#     
+#     
 # =============================================================================
-
-        #####################distance as reward##################################
-        #follower will be loaded in advance
-
-
-        for batch_idx in range(batch_size):
-
-             #print('{}/{}'.format(batch_idx,batch_size))
-             pred_i = instr_pred[batch_idx]
-             if pred_i[-1] == 2:
-                 pred_i = pred_i[:-1][::-1] + [2]
-             else: pred_i.reverse()
-             pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
-             location_end = path_obs[batch_idx][-1]['viewpoint'] # end point of the traj
-             location_start = path_obs[batch_idx][0]['viewpoint'] # start point of the traj
-             ob_1 = start_obs[batch_idx]
-             scanId = ob_1['scan']
-             viewpoint = ob_1['viewpoint']
-             elevation = ob_1['elevation']
-             heading = ob_1['heading']
-
-             #print(dist_i)
-             traj = self.agent.generate(self.sim, pred_i, scanId, viewpoint,heading,elevation)
-             end_pose_pred = traj['trajectory'][-1][0]
-             dist_i = self.env.distances[scanId][end_pose_pred][location_end] # distance towards goal
-             length_i = self.env.distances[scanId][location_start][location_end] # total length of the traj
-                                                                                                 
-             
-             bonus = 3 if dist_i < 3 else 0
-             bleus.append(dist_i)
-
-             for i in range(len(pred_i)):
-                 if i == 0:
-                     G = - (dist_i - self.env.distances[scanId][viewpoint][location_end])/length_i + bonus
-                 else:
-                     traj_j = self.agent.generate(self.sim, pred_i[:i], scanId, viewpoint,heading,elevation)
-                     end_pose_j = traj_j['trajectory'][-1][0]
-                     G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end])/length_i + bonus
-
-
-                 lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
-
-
-        #######################################################################################################
-        npy = np.load('VLN_training.npy')
-        bleu_avg = sum(bleus)/len(bleus)
-        print(bleu_avg,pred_i)
-        npy = np.append(npy,bleu_avg)
-        #np.save('BLEU_training.npy',npy)
-        with open('VLN_training.npy', 'wb') as f:
-
-            np.save(f, npy)
+            #######################################################################################################
+            ####################### compat score as reward ########################################################
+            def get_instr_list(ls):
+                ls_ls=[]
+                for i in range(len(ls)):
+                    ls_ls.append([ls[:i+1]]) 
+                return ls_ls
+            def get_score_ls(path_obs, path_actions, pred_i):
+                ls_ls = get_instr_list(pred_i)
+                score_ls = []
+                for cand in ls_ls:
+                     score = self.compat.predict([path_obs],[path_actions],cand)
+                     score_ls.append(score)
+                return score_ls
+            
+            for batch_idx in range(batch_size):
+                path_action = path_actions[batch_idx]
+                path_ob = path_obs[batch_idx]
+                
+                encoded_instructions_init, _ = self.tok.encode_sentence('')
+                start_score = self.compat.predict([path_ob],[path_action],torch.tensor([encoded_instructions_init], device = 'cpu'))
+                #print('{}/{}'.format(batch_idx,batch_size))
+                pred_i = instr_pred[batch_idx]
+                if pred_i[-1] == 2:
+                    pred_i = pred_i[:-1][::-1] + [2]
+                else: pred_i.reverse()
+                pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
+                
+                score_ls = get_score_ls(path_ob, path_action, pred_i)
+                bleus.append(score_ls[-1].detach())
+                for i in range(len(pred_i)):
+                      G = 0
+                      for j in range(len(pred_i)-i-1,len(pred_i)):
+                          if j > 0:
+                              t = j - (len(pred_i)-i-1)
+                              G += (score_ls[j]-score_ls[j-1])*np.power(lamda,t)
+                          else:
+                              G += score_ls[j] - start_score
+    
+                      lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])    
+            npy = np.load('VLN_training.npy')
+            bleu_avg = sum(bleus)/len(bleus)
+            print(bleu_avg,pred_i)
+            npy = np.append(npy,bleu_avg.cpu())
+            #np.save('BLEU_training.npy',npy)
+            with open('VLN_training.npy', 'wb') as f:
+    
+                np.save(f, npy)
         #print(lossRL, loss)
-        #loss = 0.5 * lossRL + 0.5 * loss
+
         #loss = 0.5*lossRL + 1.5* lossRL2
         loss = lossRL
         for item in outputs:
@@ -417,7 +458,7 @@ class Seq2SeqSpeaker(object):
         path_obs, path_actions, encoded_instructions = self.env.gold_obs_actions_and_instructions(self.max_episode_len, load_next_minibatch=load_next_minibatch)
         outputs, loss = self._score_obs_actions_and_instructions(path_obs, path_actions, encoded_instructions, self.feedback)
         self.loss = loss
-        #self.losses.append(loss.item())
+        self.losses.append(loss.item())
         return outputs
 
     def beam_search(self, beam_size, path_obs, path_actions):
@@ -531,6 +572,7 @@ class Seq2SeqSpeaker(object):
 
     def test(self, use_dropout=False, feedback='argmax', allow_cheat=False, beam_size=1):
         ''' Evaluate once on each instruction in the current environment '''
+        self.stat = 'test'
         if not allow_cheat: # permitted for purpose of calculating validation loss only
             assert feedback in ['argmax', 'sample'] # no cheating by using teacher at test time!
         self.feedback = feedback

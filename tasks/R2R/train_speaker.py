@@ -12,7 +12,8 @@ import argparse
 import utils
 from utils import read_vocab, Tokenizer, timeSince, try_cuda, vocab_pad_idx
 from env import R2RBatch, ImageFeatures
-from model import SpeakerEncoderLSTM, SpeakerDecoderLSTM
+from model import SpeakerEncoderLSTM, SpeakerDecoderLSTM, dotSimilarity
+from compatModel import compatModel
 from speaker import Seq2SeqSpeaker
 import eval_speaker
 
@@ -55,7 +56,23 @@ save_every = 100
 
 vocab = read_vocab(TRAIN_VOCAB)
 tok = Tokenizer(vocab=vocab)
-##############################init follower
+glove = np.load(glove_path)
+
+enc_hidden_size = hidden_size//2 if bidirectional else hidden_size
+feature_size = FEATURE_SIZE
+##############################init compat model################################
+visEncoder = try_cuda(SpeakerEncoderLSTM(
+        action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
+        bidirectional=bidirectional))    
+lanEncoder = try_cuda(EncoderLSTM(
+        len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
+        dropout_ratio, bidirectional=False, glove=glove))
+dotSim = try_cuda(dotSimilarity(batch_size, enc_hidden_size))
+
+compat = compatModel(None, "", visEncoder, lanEncoder, dotSim)
+#agent.load('tasks/R2R/snapshots/release/speaker_final_release', map_location = 'cpu')
+compat.load('tasks/R2R/compat/trained_1/compat_sample_imagenet_mean_pooled_train_iter_1000', map_location = 'cpu')
+##############################init follower####################################
 MAX_INPUT_LENGTH = 80
 feature_size = 2048+128
 max_episode_len = 10
@@ -261,7 +278,7 @@ def train_setup(args):
     train_env, val_envs, encoder, decoder = make_env_and_models(
         args, vocab, train_splits, val_splits)
     agent = Seq2SeqSpeaker(
-        train_env, "", encoder, decoder,  MAX_INSTRUCTION_LENGTH, scorer=scorer, tokenizer=tok, follower = follower)
+        train_env, "", encoder, decoder,  MAX_INSTRUCTION_LENGTH, scorer=scorer, tokenizer=tok, follower = follower, compat = compat)
     
     agent.load('tasks/R2R/snapshots/release/speaker_final_release')
     #agent.load('tasks/R2R/speaker/snapshots/speaker_teacher_imagenet_mean_pooled_train_iter_20000')
