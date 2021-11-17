@@ -337,7 +337,7 @@ class Seq2SeqSpeaker(object):
                  heading = ob_1['heading']
     
                  #print(dist_i)
-                 traj = self.agent.generate(self.sim, torch.tensor(pred_i,device = torch.device('cuda')), scanId, viewpoint,heading,elevation)
+                 traj = self.agent.generate(self.sim, torch.tensor(pred_i.reverse(),device = torch.device('cuda')), scanId, viewpoint,heading,elevation)
                  end_pose_pred = traj['trajectory'][-1][0]
                  dist_i = self.env.distances[scanId][end_pose_pred][location_end] # distance towards goal
                  length_i = self.env.distances[scanId][location_start][location_end] # total length of the traj
@@ -354,8 +354,8 @@ class Seq2SeqSpeaker(object):
                          G = - (dist_i - self.env.distances[scanId][viewpoint][location_end])/length_i + bonus
                      else:
                          
-                         pred_i_i = torch.tensor(pred_i[:i],device = torch.device('cuda'))
-                         pred_i_i.reverse()
+                         pred_i_i = pred_i
+                         pred_i_i = torch.tensor(pred_i_i[:i].reverse(),device = torch.device('cuda'))
                          traj_j = self.agent.generate(self.sim, pred_i_i, scanId, viewpoint,heading,elevation)
                          end_pose_j = traj_j['trajectory'][-1][0]
                          G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end])/length_i + bonus
