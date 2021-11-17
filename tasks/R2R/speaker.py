@@ -316,90 +316,99 @@ class Seq2SeqSpeaker(object):
 #     
 #     
 # =============================================================================
-# =============================================================================
-#             #####################distance as reward##################################
-#             #follower will be loaded in advance
-#     
-#     
-#             for batch_idx in range(batch_size):
-#     
-#                  #print('{}/{}'.format(batch_idx,batch_size))
-#                  pred_i = instr_pred[batch_idx]
-#                  if pred_i[-1] == 2:
-#                      pred_i = pred_i[:-1][::-1] + [2]
-#                  else: pred_i.reverse()
-#                  pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
-#                  location_end = path_obs[batch_idx][-1]['viewpoint'] # end point of the traj
-#                  location_start = path_obs[batch_idx][0]['viewpoint'] # start point of the traj
-#                  ob_1 = start_obs[batch_idx]
-#                  scanId = ob_1['scan']
-#                  viewpoint = ob_1['viewpoint']
-#                  elevation = ob_1['elevation']
-#                  heading = ob_1['heading']
-#     
-#                  #print(dist_i)
-#                  traj = self.agent.generate(self.sim, pred_i, scanId, viewpoint,heading,elevation)
-#                  end_pose_pred = traj['trajectory'][-1][0]
-#                  dist_i = self.env.distances[scanId][end_pose_pred][location_end] # distance towards goal
-#                  length_i = self.env.distances[scanId][location_start][location_end] # total length of the traj
-#                                                                                                      
-#                  
-#                  bonus = 3 if dist_i < 3 else 0
-#                  bleus.append(dist_i)
-#     
-#                  for i in range(len(pred_i)):
-#                      if i == 0:
-#                          G = - (dist_i - self.env.distances[scanId][viewpoint][location_end])/length_i + bonus
-#                      else:
-#                          traj_j = self.agent.generate(self.sim, pred_i[:i], scanId, viewpoint,heading,elevation)
-#                          end_pose_j = traj_j['trajectory'][-1][0]
-#                          G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end])/length_i + bonus
-#     
-#     
-#                      lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
-#     
-#     
-# =============================================================================
-            #######################################################################################################
-            ####################### compat score as reward ########################################################
-            def get_instr_list(ls):
-                ls_ls=[]
-                for i in range(len(ls)):
-                    ls_ls.append([ls[:i+1]]) 
-                return ls_ls
-            def get_score_ls(path_obs, path_actions, pred_i):
-                ls_ls = get_instr_list(pred_i)
-                score_ls = []
-                for cand in ls_ls:
-                     score = self.compat.predict([path_obs],[path_actions],cand)
-                     score_ls.append(score)
-                return score_ls
-            
-            for batch_idx in range(batch_size):
-                path_action = path_actions[batch_idx]
-                path_ob = path_obs[batch_idx]
-                
-                encoded_instructions_init, _ = self.tok.encode_sentence('')
-                start_score = self.compat.predict([path_ob],[path_action],torch.tensor([encoded_instructions_init], device = 'cpu'))
-                #print('{}/{}'.format(batch_idx,batch_size))
-                pred_i = instr_pred[batch_idx]
-                if pred_i[-1] == 2:
-                    pred_i = pred_i[:-1][::-1] + [2]
-                else: pred_i.reverse()
-                pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
-                
-                score_ls = get_score_ls(path_ob, path_action, pred_i)
-                bleus.append(score_ls[-1].detach())
-                for i in range(len(pred_i)):
-                      G = 0
-                      for j in range(len(pred_i)-i-1,len(pred_i)):
-                          if j > 0:
-                              t = j - (len(pred_i)-i-1)
-                              G += (score_ls[j]-score_ls[j-1])*np.power(lamda,t)
-                          else:
-                              G += score_ls[j] - start_score
+            #####################distance as reward##################################
+            #follower will be loaded in advance
     
-                      lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])    
+    
+            for batch_idx in range(batch_size):
+    
+                 #print('{}/{}'.format(batch_idx,batch_size))
+                 pred_i = instr_pred[batch_idx]
+                 #if pred_i[-1] == 2:
+                 #    pred_i = pred_i[:-1][::-1] + [2]
+                 #else: pred_i.reverse()
+                 pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
+                 location_end = path_obs[batch_idx][-1]['viewpoint'] # end point of the traj
+                 location_start = path_obs[batch_idx][0]['viewpoint'] # start point of the traj
+                 ob_1 = start_obs[batch_idx]
+                 scanId = ob_1['scan']
+                 viewpoint = ob_1['viewpoint']
+                 elevation = ob_1['elevation']
+                 heading = ob_1['heading']
+    
+                 #print(dist_i)
+                 traj = self.agent.generate(self.sim, pred_i, scanId, viewpoint,heading,elevation)
+                 end_pose_pred = traj['trajectory'][-1][0]
+                 dist_i = self.env.distances[scanId][end_pose_pred][location_end] # distance towards goal
+                 length_i = self.env.distances[scanId][location_start][location_end] # total length of the traj
+                                                                                                     
+                 
+                 bonus = 3 if dist_i < 3 else 0
+                 bleus.append(dist_i)
+    
+                 for i in range(len(pred_i)):
+                     
+
+                     
+                     if i == 0:
+                         G = - (dist_i - self.env.distances[scanId][viewpoint][location_end])/length_i + bonus
+                     else:
+                         
+                         pred_i_i = pred_i[:i]
+                         pred_i_i.reverse()
+                         traj_j = self.agent.generate(self.sim, pred_i_i, scanId, viewpoint,heading,elevation)
+                         end_pose_j = traj_j['trajectory'][-1][0]
+                         G = - (dist_i - self.env.distances[scanId][end_pose_j][location_end])/length_i + bonus
+    
+    
+                     lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])
+    
+    
+# =============================================================================
+#             #######################################################################################################
+#             ####################### compat score as reward ########################################################
+#             def get_instr_list(ls):
+#                 ls_ls=[]
+#                 for i in range(len(ls)):
+#                     ls_ls.append([ls[:i+1]]) 
+#                 return ls_ls
+#             def get_score_ls(path_obs, path_actions, pred_i):
+#                 ls_ls = get_instr_list(pred_i)
+#                 score_ls = []
+#                 for cand in ls_ls:
+#                      score = self.compat.predict([path_obs],[path_actions],cand)
+#                      score_ls.append(score)
+#                 return score_ls
+#             
+#             for batch_idx in range(batch_size):
+#                 path_action = path_actions[batch_idx]
+#                 path_ob = path_obs[batch_idx]
+#                 
+#                 encoded_instructions_init, _ = self.tok.encode_sentence('')
+#                 start_score = self.compat.predict([path_ob],[path_action],torch.tensor([encoded_instructions_init], device = 'cpu'))
+#                 #print('{}/{}'.format(batch_idx,batch_size))
+#                 pred_i = instr_pred[batch_idx]
+#                 if pred_i[-1] == 2:
+#                     pred_i = pred_i[:-1][::-1] + [2]
+#                 else: pred_i.reverse()
+#                 pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
+#                 
+#                 score_ls = get_score_ls(path_ob, path_action, pred_i)
+#                 bleus.append(score_ls[-1].detach())
+#                 for i in range(len(pred_i)):
+#                       G = 0
+#                       for j in range(len(pred_i)-i-1,len(pred_i)):
+#                           if j > 0:
+#                               t = j - (len(pred_i)-i-1)
+#                               G += (score_ls[j]-score_ls[j-1])*np.power(lamda,t)
+#                           else:
+#                               G += score_ls[j] - start_score
+#     
+#                       lossRL += - G * torch.log(output_soft[batch_idx][i][pred_i[i]])  
+#                       
+#                       
+#                       
+# =============================================================================
             npy = np.load('VLN_training.npy')
             bleu_avg = sum(bleus)/len(bleus)
             print(bleu_avg,pred_i)
