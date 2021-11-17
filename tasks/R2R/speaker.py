@@ -327,7 +327,7 @@ class Seq2SeqSpeaker(object):
                  #if pred_i[-1] == 2:
                  #    pred_i = pred_i[:-1][::-1] + [2]
                  #else: pred_i.reverse()
-                 pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
+                 #pred_i = torch.tensor(pred_i,device = torch.device('cuda'))
                  location_end = path_obs[batch_idx][-1]['viewpoint'] # end point of the traj
                  location_start = path_obs[batch_idx][0]['viewpoint'] # start point of the traj
                  ob_1 = start_obs[batch_idx]
@@ -354,7 +354,7 @@ class Seq2SeqSpeaker(object):
                          G = - (dist_i - self.env.distances[scanId][viewpoint][location_end])/length_i + bonus
                      else:
                          
-                         pred_i_i = pred_i[:i]
+                         pred_i_i = torch.tensor(pred_i[:i],device = torch.device('cuda'))
                          pred_i_i.reverse()
                          traj_j = self.agent.generate(self.sim, pred_i_i, scanId, viewpoint,heading,elevation)
                          end_pose_j = traj_j['trajectory'][-1][0]
