@@ -270,52 +270,52 @@ class Seq2SeqSpeaker(object):
 #     
 #                     lossRL += - G * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
 #     
-#              #######################################################################################################
-#              ###########################Bertscore reward############################################################
-#              #vocab = read_vocab(TRAIN_VOCAB)
-#              #tok = Tokenizer(vocab=vocab)
-#     
-#             lossRL2 = 0
-#             def get_instr_list(ls):
-#                  ls_ls=[]
-#                  for i in range(len(ls)):
-#                      ls_ls.append([self.tok.decode_sentence(ls[:i+1],break_on_eos=True,join=True)])
-#     
-#                  return ls_ls
-#     
-#             def get_bscore(ls,ref):
-#                  ls_ls = get_instr_list(ls)
-#                  bscore_ls = []
-#                  for cand in ls_ls:
-#                      _, _, F1 = self.scorer.score(cand,[ref])
-#                      bscore_ls.append(F1)
-#                  return bscore_ls
-#     
-#             
-#             for batch_idx in range(batch_size):
-#                  #print(batch_idx)
-#                  pred_i = instr_pred[batch_idx]
-#                  #pred_i = [tok.decode_sentence(pred_i,break_on_eos=True,join=True)]
-#     
-#                  seq_i = instr_seq[batch_idx]
-#                  seq_i = [self.tok.decode_sentence(seq_i,break_on_eos=True,join=True)]
-#                  bscore_ls = get_bscore(pred_i,seq_i)
-#     
-#                  bleus.append(bscore_ls[-1])
-#     
-#     
-#                  for i in range(len(pred_i)):
-#                      G = 0
-#                      for j in range(len(pred_i)-i-1,len(pred_i)):
-#                          if j > 0:
-#                              t = j - (len(pred_i)-i-1)
-#                              G += (bscore_ls[j]-bscore_ls[j-1])*np.power(lamda,t)
-#                          else:
-#                              G += bscore_ls[j]
-#                      lossRL2 += - G.cuda() * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
-#     
-#     
 # =============================================================================
+             #######################################################################################################
+             ###########################Bertscore reward############################################################
+             #vocab = read_vocab(TRAIN_VOCAB)
+             #tok = Tokenizer(vocab=vocab)
+    
+            lossRL2 = 0
+            def get_instr_list(ls):
+                 ls_ls=[]
+                 for i in range(len(ls)):
+                     ls_ls.append([self.tok.decode_sentence(ls[:i+1],break_on_eos=True,join=True)])
+    
+                 return ls_ls
+    
+            def get_bscore(ls,ref):
+                 ls_ls = get_instr_list(ls)
+                 bscore_ls = []
+                 for cand in ls_ls:
+                     _, _, F1 = self.scorer.score(cand,[ref])
+                     bscore_ls.append(F1)
+                 return bscore_ls
+    
+            
+            for batch_idx in range(batch_size):
+                 #print(batch_idx)
+                 pred_i = instr_pred[batch_idx]
+                 #pred_i = [tok.decode_sentence(pred_i,break_on_eos=True,join=True)]
+    
+                 seq_i = instr_seq[batch_idx]
+                 seq_i = [self.tok.decode_sentence(seq_i,break_on_eos=True,join=True)]
+                 bscore_ls = get_bscore(pred_i,seq_i)
+    
+                 bleus.append(bscore_ls[-1])
+    
+    
+                 for i in range(len(pred_i)):
+                     G = 0
+                     for j in range(len(pred_i)-i-1,len(pred_i)):
+                         if j > 0:
+                             t = j - (len(pred_i)-i-1)
+                             G += (bscore_ls[j]-bscore_ls[j-1])*np.power(lamda,t)
+                         else:
+                             G += bscore_ls[j]
+                     lossRL2 += - G.cuda() * torch.log(output_soft[batch_idx][len(pred_i)-i-1][pred_i[len(pred_i)-i-1]])
+    
+    
             #####################distance as reward##################################
             #follower will be loaded in advance
     
@@ -417,15 +417,15 @@ class Seq2SeqSpeaker(object):
             npy = np.load('VLN_training.npy')
             bleu_avg = sum(bleus)/len(bleus)
             print(bleu_avg,pred_i)
-            npy = np.append(npy,bleu_avg.cpu())
+            npy = np.append(npy,bleu_avg)
             #np.save('BLEU_training.npy',npy)
             with open('VLN_training.npy', 'wb') as f:
     
                 np.save(f, npy)
         #print(lossRL, loss)
 
-        #loss = 0.5*lossRL + 1.5* lossRL2
-        loss = lossRL
+        loss = 1*lossRL + 1* lossRL2
+        #loss = lossRL
         for item in outputs:
             item['words'] = self.env.tokenizer.decode_sentence(item['word_indices'], break_on_eos=True, join=False)
 
@@ -472,7 +472,7 @@ class Seq2SeqSpeaker(object):
         path_obs, path_actions, encoded_instructions = self.env.gold_obs_actions_and_instructions(self.max_episode_len, load_next_minibatch=load_next_minibatch)
         outputs, loss = self._score_obs_actions_and_instructions(path_obs, path_actions, encoded_instructions, self.feedback)
         self.loss = loss
-        self.losses.append(loss.item())
+        #self.losses.append(loss.item())
         return outputs
 
     def beam_search(self, beam_size, path_obs, path_actions):
