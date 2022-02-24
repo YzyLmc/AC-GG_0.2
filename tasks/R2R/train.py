@@ -25,8 +25,8 @@ PLOT_DIR = 'tasks/R2R/plots/'
 # TODO: how much is this truncating instructions?
 MAX_INPUT_LENGTH = 80
 
-BATCH_SIZE = 100
-max_episode_len = 10
+BATCH_SIZE = 5
+max_episode_len = 100
 word_embedding_size = 300
 glove_path = 'tasks/R2R/data/train_glove.npy'
 action_embedding_size = 2048+128
@@ -119,41 +119,43 @@ def train(args, train_env, agent, encoder_optimizer, decoder_optimizer,
                     args, train_env.image_features_list),
                 env_name, iter)
 
-            # Get validation distance from goal under evaluation conditions
-            agent.test(use_dropout=False, feedback='argmax')
-            if not args.no_save:
-                agent.write_results()
-            print("evaluating on {}".format(env_name))
-            score_summary, _ = evaluator.score_results(agent.results)
-
-            loss_str += ', %s loss: %.4f' % (env_name, val_loss_avg)
-            for metric, val in sorted(score_summary.items()):
-                data_log['%s %s' % (env_name, metric)].append(val)
-                if metric in ['success_rate']:
-                    loss_str += ', %s: %.3f' % (metric, val)
-
-                    key = (env_name, metric)
-                    if key not in best_metrics or best_metrics[key] < val:
-                        best_metrics[key] = val
-                        if not args.no_save:
-                            model_path = make_path(iter) + "_%s-%s=%.3f" % (
-                                env_name, metric, val)
-                            save_log.append(
-                                "new best, saved model to %s" % model_path)
-                            agent.save(model_path)
-                            if key in last_model_saved:
-                                for old_model_path in \
-                                        agent._encoder_and_decoder_paths(
-                                            last_model_saved[key]):
-                                    os.remove(old_model_path)
-                            last_model_saved[key] = model_path
-
-        print(('%s (%d %d%%) %s' % (
-            timeSince(start, float(iter)/n_iters),
-            iter, float(iter)/n_iters*100, loss_str)))
-        for s in save_log:
-            print(s)
-
+# =============================================================================
+#             # Get validation distance from goal under evaluation conditions
+#             agent.test(use_dropout=False, feedback='argmax')
+#             if not args.no_save:
+#                 agent.write_results()
+#             print("evaluating on {}".format(env_name))
+#             score_summary, _ = evaluator.score_results(agent.results)
+# 
+#             loss_str += ', %s loss: %.4f' % (env_name, val_loss_avg)
+#             for metric, val in sorted(score_summary.items()):
+#                 data_log['%s %s' % (env_name, metric)].append(val)
+#                 if metric in ['success_rate']:
+#                     loss_str += ', %s: %.3f' % (metric, val)
+# 
+#                     key = (env_name, metric)
+#                     if key not in best_metrics or best_metrics[key] < val:
+#                         best_metrics[key] = val
+#                         if not args.no_save:
+#                             model_path = make_path(iter) + "_%s-%s=%.3f" % (
+#                                 env_name, metric, val)
+#                             save_log.append(
+#                                 "new best, saved model to %s" % model_path)
+#                             agent.save(model_path)
+#                             if key in last_model_saved:
+#                                 for old_model_path in \
+#                                         agent._encoder_and_decoder_paths(
+#                                             last_model_saved[key]):
+#                                     os.remove(old_model_path)
+#                             last_model_saved[key] = model_path
+# 
+#         print(('%s (%d %d%%) %s' % (
+#             timeSince(start, float(iter)/n_iters),
+#             iter, float(iter)/n_iters*100, loss_str)))
+#         for s in save_log:
+#             print(s)
+# 
+# =============================================================================
         if not args.no_save:
             if save_every and iter % save_every == 0:
                 agent.save(make_path(iter))
@@ -236,7 +238,7 @@ def train_setup(args, batch_size=BATCH_SIZE):
     agent = Seq2SeqAgent(
         train_env, "", encoder, decoder, max_episode_len,
         max_instruction_length=MAX_INPUT_LENGTH)
-
+    agent.load('tasks/R2R/snapshots/release/follower_final_release')
     if args.use_pretraining:
         return agent, train_env, val_envs, pretrain_env
     else:

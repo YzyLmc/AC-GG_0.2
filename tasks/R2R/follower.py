@@ -283,6 +283,7 @@ class Seq2SeqAgent(BaseAgent):
         self.beam_size = beam_size
         self.reverse_instruction = reverse_instruction
         self.max_instruction_length = max_instruction_length
+        self.stat = 'train'
         
         parser = argparse.ArgumentParser()
         from env import ImageFeatures
@@ -446,8 +447,6 @@ class Seq2SeqAgent(BaseAgent):
 
         # get mask and lengths
         seq, seq_mask, seq_lengths = self._proc_batch(initial_obs)
-        print(seq_mask)
-        print(seq, seq_lengths)
 
         # Forward through encoder, giving initial hidden state and memory cell for decoder
         # TODO consider not feeding this into the decoder, and just using attention
@@ -478,6 +477,9 @@ class Seq2SeqAgent(BaseAgent):
         # Do a sequence rollout and calculate the loss
         env_action = [None] * batch_size
         sequence_scores = try_cuda(torch.zeros(batch_size))
+        
+        output_soft = []
+            
         for t in range(self.episode_len):
             f_t_list = self._feature_variables(obs) # Image features from obs
             all_u_t, is_valid, _ = self._action_variable(obs)
@@ -488,7 +490,7 @@ class Seq2SeqAgent(BaseAgent):
 
             # Mask outputs of invalid actions
             logit[is_valid == 0] = -float('inf')
-
+            
             # Supervised training
             target = self._teacher_action(obs, ended)
             self.loss += self.criterion(logit, target)
@@ -505,11 +507,13 @@ class Seq2SeqAgent(BaseAgent):
                 # Further mask probs where agent can't move forward
                 # Note input to `D.Categorical` does not have to sum up to 1
                 # http://pytorch.org/docs/stable/torch.html#torch.multinomial
-                probs[is_valid == 0] = 0.
+                # probs[is_valid == 0] = 0.
                 m = D.Categorical(probs)
                 a_t = m.sample()
             else:
                 sys.exit('Invalid feedback option')
+            # print(probs.unsqueeze(0).size())
+            output_soft.append(probs.clone())
 
             # update the previous action
             u_t_prev = all_u_t[np.arange(batch_size), a_t, :].detach()
@@ -545,9 +549,54 @@ class Seq2SeqAgent(BaseAgent):
             # Early exit if all ended
             if ended.all():
                 break
-
+        #print(output_soft[0].size(),output_soft[1].size())    
+        #output_soft = torch.cat(output_soft, 0)
+        #output_soft =output_soft.transpose(0,1)
+        #max_len = max([a.size(1) for a in output_soft])
+        #output_log = torch.zeros(len(output_soft),batch_size,max_len)
+        
+        #for i in range(len(output_soft)):
+        #    for j in range(len(output_soft[i])):
+        #        for k in range(len(output_soft[i][j])):
+        #        
+        #           output_log[i,j,k] = output_soft[i][j, k]
+        #output_log =output_log.transpose(0,1)
+        
+        lossRL = 0
+        dis = []
+        if not self.stat == 'test':
+            
+            for batch_idx in range(batch_size):
+                action_i = traj[batch_idx]['actions']
+                traj_i = traj[batch_idx]['trajectory']
+                scanId = initial_obs[batch_idx]['scan']
+                dest = initial_obs[batch_idx]['end']
+                dist_i = self.env.distances[scanId][traj_i[-1][0]][dest]# distance towards goal
+                length_i = self.env.distances[scanId][traj_i[0][0]][dest] # total length of the traj
+                
+                bonus = 3 if dist_i < 3 else 0
+                dis.append(dist_i)
+                
+                for i in range(len(traj_i)-1):
+                    
+                    traj_i_j = traj_i[i][0]
+                    action_i_j = action_i[i]
+                    G = - (dist_i - self.env.distances[scanId][traj_i_j][dest])/length_i
+                    
+                    lossRL += - G * torch.log(output_soft[i][batch_idx][action_i_j])
+                
+                lossRL -= bonus
+            npy = np.load('dis_training.npy')
+            dis_avg = sum(dis)/len(dis)
+            print(dis_avg)
+            npy = np.append(npy,dis_avg)
+            #np.save('BLEU_training.npy',npy)
+            with open('dis_training.npy', 'wb') as f:
+    
+                np.save(f, npy)
         #self.losses.append(self.loss.data[0] / self.episode_len)
         # shouldn't divide by the episode length because of masking
+        self.loss = lossRL
         self.losses.append(self.loss.item())
         #print(traj[0]['trajectory'])
         return traj
@@ -1239,7 +1288,7 @@ class Seq2SeqAgent(BaseAgent):
         self.set_beam_size(beam_size)
         return super(Seq2SeqAgent, self).test()
 
-    def train(self, encoder_optimizer, decoder_optimizer, n_iters, feedback='teacher'):
+    def train(self, encoder_optimizer, decoder_optimizer, n_iters, feedback='sample'):
         ''' Train for a given number of iterations '''
         assert all(f in self.feedback_options for f in feedback.split("+"))
         self.feedback = feedback
@@ -1252,13 +1301,14 @@ class Seq2SeqAgent(BaseAgent):
             it = tqdm.tqdm(it)
         except:
             pass
-        for _ in it:
-            encoder_optimizer.zero_grad()
-            decoder_optimizer.zero_grad()
-            self._rollout_with_loss()
-            self.loss.backward()
-            encoder_optimizer.step()
-            decoder_optimizer.step()
+        with torch.autograd.set_detect_anomaly(True):
+            for _ in it:
+                encoder_optimizer.zero_grad()
+                decoder_optimizer.zero_grad()
+                self._rollout_with_loss()
+                self.loss.backward()
+                encoder_optimizer.step()
+                decoder_optimizer.step()
 
     def _encoder_and_decoder_paths(self, base_path):
         return base_path + "_enc", base_path + "_dec"
