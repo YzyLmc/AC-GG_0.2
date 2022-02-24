@@ -785,7 +785,8 @@ class R2RBatch():
                     'action_embedding': action_embedding,
                     'navigableLocations' : state.navigableLocations,
                     'instructions' : item['instructions'],
-                    'location': state.location
+                    'location': state.location,
+                    'end': item['path'][-1]
                 }
                 if include_teacher:
                     ob['teacher'] = self._shortest_path_action(state, adj_loc_list, item['path'][-1])
