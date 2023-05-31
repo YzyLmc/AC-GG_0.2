@@ -438,7 +438,7 @@ from vocab import SUBTRAIN_VOCAB, TRAIN_VOCAB, TRAINVAL_VOCAB
 from utils import read_vocab, Tokenizer    
 vocab = read_vocab('data/train_vocab.txt')
 tok = Tokenizer(vocab=vocab)
-
+#%%
 for item in hardNeg:
     instr = item['instructions']
     item['instr_encoding'], item['instr_length'] = tok.encode_sentence(instr)
